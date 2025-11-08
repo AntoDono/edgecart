@@ -464,7 +464,7 @@ def sync_from_knot(external_user_id):
         return jsonify({
             'message': 'Customer synced from Knot',
             'customer': customer.to_dict(),
-            'transaction_count': sync_data.get('transaction_count', 0),
+            'order_count': sync_data.get('order_count', sync_data.get('transaction_count', 0)),
             'preferences': sync_data['preferences']
         }), 200
     

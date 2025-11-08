@@ -124,7 +124,7 @@ class KnotAPIClient:
     
     def sync_customer_data(self, external_user_id, customer_name=None, customer_email=None):
         """
-        Sync customer transaction data from Knot to SusCart
+        Sync customer order data from Knot to SusCart
         
         Args:
             external_user_id: Your customer's ID in your system
@@ -134,15 +134,15 @@ class KnotAPIClient:
         Returns:
             dict: Synchronized customer data ready for SusCart
         """
-        # Get transactions from Knot
-        transactions = self.get_customer_transactions(external_user_id, limit=100)
+        # Get orders from Knot (uses 'orders' not 'transactions')
+        orders = self.get_customer_transactions(external_user_id, limit=100)
         
-        if not transactions:
-            print(f"⚠️  No transactions found for user {external_user_id}")
+        if not orders:
+            print(f"⚠️  No orders found for user {external_user_id}")
             return None
         
-        # Analyze purchase patterns from transactions
-        preferences = self._analyze_purchase_patterns(transactions)
+        # Analyze purchase patterns from orders
+        preferences = self._analyze_purchase_patterns(orders)
         
         return {
             'external_user_id': external_user_id,
@@ -151,21 +151,22 @@ class KnotAPIClient:
             'email': customer_email,
             'phone': None,
             'preferences': preferences,
-            'transactions': transactions,
-            'transaction_count': len(transactions)
+            'orders': orders,
+            'order_count': len(orders)
         }
     
-    def _analyze_purchase_patterns(self, transactions):
+    def _analyze_purchase_patterns(self, orders):
         """
-        Analyze customer transaction history to determine preferences
+        Analyze customer order history to determine preferences
+        Matches the real Knot API format with 'products' not 'skus'
         
         Args:
-            transactions: List of transaction data from Knot API
+            orders: List of order data from Knot API (real format)
             
         Returns:
             dict: Customer preferences
         """
-        if not transactions:
+        if not orders:
             return {
                 'favorite_fruits': [],
                 'favorite_products': [],
@@ -189,38 +190,43 @@ class KnotAPIClient:
         total_spend = 0
         merchants = set()
         
-        for transaction in transactions:
-            # Track merchant
-            merchant = transaction.get('merchant', {}).get('name', 'Unknown')
-            merchants.add(merchant)
+        for order in orders:
+            # Extract merchant from URL
+            url = order.get('url', '')
+            if 'instacart' in url:
+                merchants.add('Instacart')
+            elif 'walmart' in url:
+                merchants.add('Walmart')
+            elif 'target' in url:
+                merchants.add('Target')
+            elif 'costco' in url:
+                merchants.add('Costco')
+            elif 'amazon' in url:
+                merchants.add('Amazon')
+            elif 'doordash' in url:
+                merchants.add('Doordash')
+            elif 'ubereats' in url:
+                merchants.add('Ubereats')
             
-            # Get transaction amount
-            amount = transaction.get('amount', 0)
-            total_spend += abs(amount)  # Use abs in case of refunds
+            # Get order total
+            price = order.get('price', {})
+            total = price.get('total', 0)
+            total_spend += abs(total)
             
-            # Analyze SKU data if available
-            skus = transaction.get('skus', [])
-            description = transaction.get('description', '').lower()
+            # Analyze products (not skus!)
+            products = order.get('products', [])
             
-            # Check transaction description for fruits
-            for keyword in fruit_keywords:
-                if keyword in description:
-                    fruit_counts[keyword] = fruit_counts.get(keyword, 0) + 1
-            
-            # Analyze SKUs (line items)
-            for sku in skus:
-                sku_name = sku.get('name', '').lower()
-                sku_category = sku.get('category', '').lower()
+            for product in products:
+                product_name = product.get('name', '').lower()
                 
                 # Track product
-                if sku_name:
-                    product_counts[sku_name] = product_counts.get(sku_name, 0) + 1
+                if product_name:
+                    product_counts[product_name] = product_counts.get(product_name, 0) + product.get('quantity', 1)
                 
                 # Check if it's a fruit
-                if 'produce' in sku_category or 'fruit' in sku_category:
-                    for keyword in fruit_keywords:
-                        if keyword in sku_name:
-                            fruit_counts[keyword] = fruit_counts.get(keyword, 0) + 1
+                for keyword in fruit_keywords:
+                    if keyword in product_name:
+                        fruit_counts[keyword] = fruit_counts.get(keyword, 0) + product.get('quantity', 1)
         
         # Get top 5 favorite fruits
         sorted_fruits = sorted(fruit_counts.items(), key=lambda x: x[1], reverse=True)
@@ -231,18 +237,18 @@ class KnotAPIClient:
         favorite_products = [product for product, _ in sorted_products[:5]]
         
         # Calculate averages
-        num_transactions = len(transactions)
-        average_spend = total_spend / num_transactions if num_transactions > 0 else 0
+        num_orders = len(orders)
+        average_spend = total_spend / num_orders if num_orders > 0 else 0
         
         return {
             'favorite_fruits': favorite_fruits,
             'favorite_products': favorite_products,
-            'purchase_frequency': num_transactions / 90,  # transactions per day (assume 90 day window)
+            'purchase_frequency': num_orders / 90,  # orders per day (assume 90 day window)
             'average_spend': round(average_spend, 2),
-            'preferred_discount': 20,  # Default to 20% - adjust based on actual data if available
-            'max_price': round(average_spend * 2, 2),  # willing to pay 2x average transaction
+            'preferred_discount': 20,  # Default to 20%
+            'max_price': round(average_spend * 2, 2),  # willing to pay 2x average
             'merchants_used': list(merchants),
-            'total_transactions': num_transactions
+            'total_orders': num_orders
         }
     
     def webhook_handler(self, webhook_data):
@@ -285,59 +291,208 @@ class MockKnotAPIClient(KnotAPIClient):
         self.mock_data = self._generate_mock_data()
     
     def _generate_mock_data(self):
-        """Generate mock transaction data in Knot API format"""
+        """Generate mock order data matching real Knot API format"""
         return {
             'user123': {
-                'transactions': [
+                'orders': [
                     {
-                        'id': 'txn_mock_001',
-                        'merchant': {'id': 40, 'name': 'Instacart'},
-                        'amount': -45.67,
-                        'date': (datetime.utcnow() - timedelta(days=3)).isoformat(),
-                        'description': 'Instacart - Fresh produce delivery',
-                        'skus': [
-                            {'name': 'Organic Bananas', 'category': 'produce', 'amount': -5.99},
-                            {'name': 'Honeycrisp Apples', 'category': 'produce', 'amount': -8.99},
-                            {'name': 'Fresh Strawberries', 'category': 'produce', 'amount': -6.99}
+                        'externalId': '029f1e08-9015-4118-a698-ddf6b296eda3',
+                        'dateTime': (datetime.utcnow() - timedelta(days=3)).isoformat(),
+                        'url': 'https://www.instacart.com/store/orders/029f1e08-9015-4118-a698-ddf6b296eda3',
+                        'orderStatus': 'DELIVERED',
+                        'price': {
+                            'subTotal': 45.67,
+                            'total': 50.23,
+                            'currency': 'USD'
+                        },
+                        'products': [
+                            {
+                                'externalId': '1200354',
+                                'name': 'Organic Bananas - 2 lbs',
+                                'url': 'https://www.instacart.com/product/1200354',
+                                'quantity': 2,
+                                'price': {
+                                    'subTotal': 5.98,
+                                    'total': 5.98,
+                                    'unitPrice': 2.99,
+                                    'currency': 'USD'
+                                }
+                            },
+                            {
+                                'externalId': '1200355',
+                                'name': 'Honeycrisp Apples - 3 lb bag',
+                                'url': 'https://www.instacart.com/product/1200355',
+                                'quantity': 1,
+                                'price': {
+                                    'subTotal': 8.99,
+                                    'total': 8.99,
+                                    'unitPrice': 8.99,
+                                    'currency': 'USD'
+                                }
+                            },
+                            {
+                                'externalId': '1200356',
+                                'name': 'Fresh Strawberries - 1 lb',
+                                'url': 'https://www.instacart.com/product/1200356',
+                                'quantity': 3,
+                                'price': {
+                                    'subTotal': 17.97,
+                                    'total': 17.97,
+                                    'unitPrice': 5.99,
+                                    'currency': 'USD'
+                                }
+                            },
+                            {
+                                'externalId': '1200357',
+                                'name': 'Organic Blueberries - 6 oz',
+                                'url': 'https://www.instacart.com/product/1200357',
+                                'quantity': 2,
+                                'price': {
+                                    'subTotal': 11.98,
+                                    'total': 11.98,
+                                    'unitPrice': 5.99,
+                                    'currency': 'USD'
+                                }
+                            }
                         ]
                     },
                     {
-                        'id': 'txn_mock_002',
-                        'merchant': {'id': 45, 'name': 'Walmart'},
-                        'amount': -32.45,
-                        'date': (datetime.utcnow() - timedelta(days=7)).isoformat(),
-                        'description': 'Walmart Grocery',
-                        'skus': [
-                            {'name': 'Navel Oranges 3lb', 'category': 'produce', 'amount': -7.99},
-                            {'name': 'Red Grapes', 'category': 'produce', 'amount': -5.49},
-                            {'name': 'Mango', 'category': 'produce', 'amount': -2.99}
+                        'externalId': '4151632',
+                        'dateTime': (datetime.utcnow() - timedelta(days=7)).isoformat(),
+                        'url': 'https://www.walmart.com/orders/4151632',
+                        'orderStatus': 'DELIVERED',
+                        'price': {
+                            'subTotal': 32.45,
+                            'total': 35.12,
+                            'currency': 'USD'
+                        },
+                        'products': [
+                            {
+                                'externalId': '808080808',
+                                'name': 'Navel Oranges - 3 lb bag',
+                                'url': 'https://www.walmart.com/ip/808080808',
+                                'quantity': 1,
+                                'price': {
+                                    'subTotal': 7.99,
+                                    'total': 7.99,
+                                    'unitPrice': 7.99,
+                                    'currency': 'USD'
+                                }
+                            },
+                            {
+                                'externalId': '808080809',
+                                'name': 'Red Seedless Grapes - 2 lbs',
+                                'url': 'https://www.walmart.com/ip/808080809',
+                                'quantity': 2,
+                                'price': {
+                                    'subTotal': 10.98,
+                                    'total': 10.98,
+                                    'unitPrice': 5.49,
+                                    'currency': 'USD'
+                                }
+                            },
+                            {
+                                'externalId': '808080810',
+                                'name': 'Fresh Mango',
+                                'url': 'https://www.walmart.com/ip/808080810',
+                                'quantity': 3,
+                                'price': {
+                                    'subTotal': 8.97,
+                                    'total': 8.97,
+                                    'unitPrice': 2.99,
+                                    'currency': 'USD'
+                                }
+                            }
                         ]
                     },
                     {
-                        'id': 'txn_mock_003',
-                        'merchant': {'id': 40, 'name': 'Instacart'},
-                        'amount': -28.33,
-                        'date': (datetime.utcnow() - timedelta(days=14)).isoformat(),
-                        'description': 'Instacart - Weekly groceries',
-                        'skus': [
-                            {'name': 'Organic Blueberries', 'category': 'produce', 'amount': -6.99},
-                            {'name': 'Gala Apples', 'category': 'produce', 'amount': -7.49},
-                            {'name': 'Bananas', 'category': 'produce', 'amount': -3.99}
+                        'externalId': '09f3cdc2-2443-4f64-ade7-5f897f25768e',
+                        'dateTime': (datetime.utcnow() - timedelta(days=14)).isoformat(),
+                        'url': 'www.costco.com/order/09f3cdc2-2443-4f64-ade7-5f897f25768e',
+                        'orderStatus': 'SHIPPED',
+                        'price': {
+                            'subTotal': 28.96,
+                            'total': 31.92,
+                            'currency': 'USD'
+                        },
+                        'products': [
+                            {
+                                'externalId': '1200200857',
+                                'name': 'Kirkland Signature Organic Blueberries, 4 lb',
+                                'url': 'https://www.costco.com/product/1200200857',
+                                'quantity': 1,
+                                'price': {
+                                    'subTotal': 10.99,
+                                    'total': 10.99,
+                                    'unitPrice': 10.99,
+                                    'currency': 'USD'
+                                }
+                            },
+                            {
+                                'externalId': '1200200858',
+                                'name': 'Gala Apples - 5 lb bag',
+                                'url': 'https://www.costco.com/product/1200200858',
+                                'quantity': 1,
+                                'price': {
+                                    'subTotal': 7.49,
+                                    'total': 7.49,
+                                    'unitPrice': 7.49,
+                                    'currency': 'USD'
+                                }
+                            },
+                            {
+                                'externalId': '1200200859',
+                                'name': 'Organic Bananas - 3 lbs',
+                                'url': 'https://www.costco.com/product/1200200859',
+                                'quantity': 2,
+                                'price': {
+                                    'subTotal': 7.98,
+                                    'total': 7.98,
+                                    'unitPrice': 3.99,
+                                    'currency': 'USD'
+                                }
+                            }
                         ]
                     }
                 ]
             },
             'user456': {
-                'transactions': [
+                'orders': [
                     {
-                        'id': 'txn_mock_004',
-                        'merchant': {'id': 12, 'name': 'Target'},
-                        'amount': -52.10,
-                        'date': (datetime.utcnow() - timedelta(days=2)).isoformat(),
-                        'description': 'Target - Grocery run',
-                        'skus': [
-                            {'name': 'Watermelon', 'category': 'produce', 'amount': -8.99},
-                            {'name': 'Pineapple', 'category': 'produce', 'amount': -5.99}
+                        'externalId': 'fac1f902-1308-42e1-b93a-5b9bebd887ef',
+                        'dateTime': (datetime.utcnow() - timedelta(days=2)).isoformat(),
+                        'url': 'https://orders.target.com/order/fac1f902-1308-42e1-b93a-5b9bebd887ef',
+                        'orderStatus': 'DELIVERED',
+                        'price': {
+                            'subTotal': 22.45,
+                            'total': 24.12,
+                            'currency': 'USD'
+                        },
+                        'products': [
+                            {
+                                'externalId': '1200262',
+                                'name': 'Watermelon - Seedless',
+                                'url': 'https://www.target.com/product/1200262',
+                                'quantity': 1,
+                                'price': {
+                                    'subTotal': 8.99,
+                                    'total': 8.99,
+                                    'unitPrice': 8.99,
+                                    'currency': 'USD'
+                                }
+                            },
+                            {
+                                'externalId': '1200263',
+                                'name': 'Fresh Pineapple',
+                                'url': 'https://www.target.com/product/1200263',
+                                'quantity': 2,
+                                'price': {
+                                    'subTotal': 11.98,
+                                    'total': 11.98,
+                                    'unitPrice': 5.99,
+                                    'currency': 'USD'
+                                }
+                            }
                         ]
                     }
                 ]
@@ -345,22 +500,22 @@ class MockKnotAPIClient(KnotAPIClient):
         }
     
     def sync_transactions(self, external_user_id, merchant_ids=None, limit=100, cursor=None):
-        """Return mock transaction data"""
+        """Return mock order data"""
         data = self.mock_data.get(external_user_id)
         if not data:
-            return {'transactions': [], 'count': 0, 'external_user_id': external_user_id}
+            return {'orders': [], 'count': 0, 'external_user_id': external_user_id}
         
-        transactions = data.get('transactions', [])
+        orders = data.get('orders', [])
         return {
-            'transactions': transactions[:limit],
-            'count': len(transactions),
+            'orders': orders[:limit],
+            'count': len(orders),
             'external_user_id': external_user_id
         }
     
     def get_customer_transactions(self, external_user_id, limit=100):
-        """Return mock transactions"""
+        """Return mock orders"""
         result = self.sync_transactions(external_user_id, limit=limit)
-        return result.get('transactions', [])
+        return result.get('orders', [])
 
 
 def get_knot_client():
