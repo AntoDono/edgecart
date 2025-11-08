@@ -9,27 +9,30 @@ from tqdm import tqdm
 import os
 
 class RipeDetector(nn.Module):
-    def __init__(self):
+    def __init__(self, dropout_rate=0.5):
         super(RipeDetector, self).__init__()
         # Lighter model: reduced channels and FC size
         # First convolutional layer: 3 input channels (RGB), 8 output channels, 3x3 kernel
-        self.conv1 = nn.Conv2d(3, 4, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(3, 8, kernel_size=3, padding=1)
         # Second convolutional layer: 8 input channels, 16 output channels, 3x3 kernel
-        self.conv2 = nn.Conv2d(4, 8, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=3, padding=1)
         # Max pooling layer
         self.pool = nn.MaxPool2d(2, 2)
         # Adaptive average pooling to reduce spatial dimensions before FC
         self.adaptive_pool = nn.AdaptiveAvgPool2d((7, 7))
+        # Dropout layer for regularization
+        self.dropout = nn.Dropout(dropout_rate)
         # Fully connected layers - much smaller
-        self.fc1 = nn.Linear(8 * 7 * 7, 32)
+        self.fc1 = nn.Linear(16 * 7 * 7, 32)
         self.fc2 = nn.Linear(32, 1)  # Binary classification: 1 output (fresh=1, rotten=0)
 
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = self.adaptive_pool(x)  # Reduce to 7x7
-        x = x.view(-1, 8 * 7 * 7)  # Flatten the feature maps
+        x = x.view(-1, 16 * 7 * 7)  # Flatten the feature maps
         x = F.relu(self.fc1(x))
+        x = self.dropout(x)  # Apply dropout for regularization
         x = self.fc2(x)
         return x
 
@@ -142,7 +145,7 @@ def load_data(path="./setup/data/dataset"):
     
     return train_dataset, test_dataset
 
-def train_model(model, train_dataset, test_dataset, epochs=10, batch_size=32, learning_rate=0.001):
+def train_model(model, train_dataset, test_dataset, epochs=10, batch_size=64, learning_rate=0.001):
     """
     Train the RipeDetector model on the training dataset and evaluate on test dataset.
     
