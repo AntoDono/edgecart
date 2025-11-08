@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './AdminDashboard.css';
+import { config } from '../config';
 
 interface Detection {
   bbox: [number, number, number, number];
@@ -163,6 +164,7 @@ const AdminDashboard = () => {
   const [fps, setFps] = useState(0);
   const [detectionCount, setDetectionCount] = useState(0);
   const [detections, setDetections] = useState<DetectionWithImage[]>([]);
+  const [classCounts, setClassCounts] = useState<Record<string, number>>({});
   const [ripeModelLoaded, setRipeModelLoaded] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -272,6 +274,13 @@ const AdminDashboard = () => {
 
       // Update detections with cropped images
       setDetections(detectionsWithImages);
+      
+      // Calculate class counts
+      const counts: Record<string, number> = {};
+      detections.forEach(detection => {
+        counts[detection.class] = (counts[detection.class] || 0) + 1;
+      });
+      setClassCounts(counts);
     };
     img.src = imageUrl;
   };
@@ -289,6 +298,7 @@ const AdminDashboard = () => {
     } else {
       displayFrame(imageUrl, []);
       setDetections([]);
+      setClassCounts({});
     }
 
     setTimeout(() => URL.revokeObjectURL(imageUrl), 100);
@@ -302,7 +312,7 @@ const AdminDashboard = () => {
     }
 
     try {
-      const websocket = new WebSocket('ws://localhost:3000/ws/stream_video');
+      const websocket = new WebSocket(`${config.wsUrl}/ws/stream_video`);
       websocket.binaryType = 'arraybuffer';
       wsRef.current = websocket;
 
@@ -437,6 +447,13 @@ const AdminDashboard = () => {
           </div>
         </div>
         <div className="status-indicators">
+          <button 
+            className="control-btn view-inventory-btn" 
+            onClick={() => { window.location.hash = '#admin-inventory'; }}
+            style={{ marginRight: '1rem' }}
+          >
+            VIEW INVENTORY
+          </button>
           <span className={`status-badge ${isConnected ? 'connected' : 'disconnected'}`}>
             {isConnected ? 'CONNECTED' : 'DISCONNECTED'}
           </span>
@@ -474,23 +491,43 @@ const AdminDashboard = () => {
           ))}
         </div>
 
-        <div className="video-container" ref={videoContainerRef}>
-          <canvas ref={canvasRef} className="video-canvas" />
-          <svg className="arrow-overlay" preserveAspectRatio="none">
-            {detections.map((detection) => {
-              const isLeft = detection.index !== undefined && detection.index % 2 === 0;
-              return (
-                <Arrow
-                  key={detection.index}
-                  detection={detection}
-                  side={isLeft ? 'left' : 'right'}
-                  canvasRef={canvasRef}
-                  panelRef={isLeft ? leftPanelRef : rightPanelRef}
-                  containerRef={videoContainerRef}
-                />
-              );
-            })}
-          </svg>
+        <div className="middle-section">
+          <div className="video-container" ref={videoContainerRef}>
+            <canvas ref={canvasRef} className="video-canvas" />
+            <svg className="arrow-overlay" preserveAspectRatio="none">
+              {detections.map((detection) => {
+                const isLeft = detection.index !== undefined && detection.index % 2 === 0;
+                return (
+                  <Arrow
+                    key={detection.index}
+                    detection={detection}
+                    side={isLeft ? 'left' : 'right'}
+                    canvasRef={canvasRef}
+                    panelRef={isLeft ? leftPanelRef : rightPanelRef}
+                    containerRef={videoContainerRef}
+                  />
+                );
+              })}
+            </svg>
+          </div>
+
+          <div className="class-counts-section">
+            <h3 className="class-counts-title">DETECTED CLASSES</h3>
+            <div className="class-counts-grid">
+              {Object.keys(classCounts).length === 0 ? (
+                <div className="class-count-item empty">No detections</div>
+              ) : (
+                Object.entries(classCounts)
+                  .sort((a, b) => b[1] - a[1]) // Sort by count descending
+                  .map(([className, count]) => (
+                    <div key={className} className="class-count-item">
+                      <span className="class-name">{className}</span>
+                      <span className="class-count">{count}</span>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="detection-panel right-panel" ref={rightPanelRef}>

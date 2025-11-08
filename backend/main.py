@@ -7,6 +7,7 @@ import os
 import cv2
 import numpy as np
 from datetime import datetime
+import random
 
 # Load environment variables
 load_dotenv()
@@ -118,6 +119,34 @@ def notify_customer(customer_id, event_type, data):
             del customer_connections[customer_id]
 
 
+def notify_quantity_change(item, old_quantity, new_quantity):
+    """Helper function to notify about quantity changes"""
+    quantity_delta = new_quantity - old_quantity
+    if quantity_delta != 0:
+        item_data = item.to_dict()
+        item_data['quantity_change'] = {
+            'old_quantity': old_quantity,
+            'new_quantity': new_quantity,
+            'delta': quantity_delta,
+            'change_type': 'increase' if quantity_delta > 0 else 'decrease'
+        }
+        
+        # Send specific quantity change event
+        broadcast_to_admins('quantity_changed', {
+            'inventory_id': item.id,
+            'fruit_type': item.fruit_type,
+            'old_quantity': old_quantity,
+            'new_quantity': new_quantity,
+            'delta': quantity_delta,
+            'change_type': 'increase' if quantity_delta > 0 else 'decrease',
+            'item': item_data,
+            'timestamp': datetime.utcnow().isoformat()
+        })
+        
+        return item_data
+    return item.to_dict()
+
+
 # ============ Basic Routes ============
 
 @app.route('/')
@@ -160,6 +189,17 @@ def health_check():
 
 
 # ============ Inventory Management API ============
+
+@app.route('/api/stores', methods=['GET'])
+def get_stores():
+    """Get all stores"""
+    try:
+        stores = Store.query.all()
+        return jsonify({
+            'stores': [store.to_dict() for store in stores]
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/inventory', methods=['GET'])
 def get_inventory():
@@ -231,12 +271,15 @@ def create_inventory_item():
         db.session.add(item)
         db.session.commit()
         
+        # Notify about quantity change (new item = increase from 0)
+        item_data = notify_quantity_change(item, 0, item.quantity)
+        
         # Broadcast to admin dashboards
-        broadcast_to_admins('inventory_added', item.to_dict())
+        broadcast_to_admins('inventory_added', item_data)
         
         return jsonify({
             'message': 'Inventory item created',
-            'item': item.to_dict()
+            'item': item_data
         }), 201
     
     except Exception as e:
@@ -251,23 +294,37 @@ def update_inventory_item(item_id):
         item = FruitInventory.query.get_or_404(item_id)
         data = request.get_json()
         
+        # Track quantity changes
+        old_quantity = item.quantity
+        
         # Update fields
         if 'quantity' in data:
             item.quantity = data['quantity']
+        if 'fruit_type' in data:
+            item.fruit_type = data['fruit_type']
+        if 'variety' in data:
+            item.variety = data['variety']
+        if 'batch_number' in data:
+            item.batch_number = data['batch_number']
         if 'location_in_store' in data:
             item.location_in_store = data['location_in_store']
+        if 'original_price' in data:
+            item.original_price = data['original_price']
         if 'current_price' in data:
             item.current_price = data['current_price']
         
         item.updated_at = datetime.utcnow()
         db.session.commit()
         
-        # Broadcast update
-        broadcast_to_admins('inventory_updated', item.to_dict())
+        # Notify about quantity change if it changed
+        update_data = notify_quantity_change(item, old_quantity, item.quantity)
+        
+        # Also send general inventory update
+        broadcast_to_admins('inventory_updated', update_data)
         
         return jsonify({
             'message': 'Inventory item updated',
-            'item': item.to_dict()
+            'item': update_data
         }), 200
     
     except Exception as e:
@@ -349,11 +406,12 @@ def update_freshness():
         db.session.commit()
         
         # Broadcast update
-        broadcast_to_admins('freshness_updated', {
-            'inventory_id': inventory_id,
-            'freshness': freshness.to_dict(),
-            'item': inventory.to_dict() if inventory else None
-        })
+        if inventory:
+            broadcast_to_admins('freshness_updated', {
+                'inventory_id': inventory_id,
+                'freshness': freshness.to_dict(),
+                'item': inventory.to_dict()
+            })
         
         # Send alert if critical
         if freshness.status == 'critical':
@@ -883,6 +941,26 @@ def stream_video_websocket(ws):
             """Process frames from camera and send to client"""
             nonlocal streaming, camera
             
+            # Load initial inventory and get default store
+            # Store as dict: {fruit_type: (item_id, current_quantity)}
+            inventory_cache = {}
+            default_store_id = None
+            with app.app_context():
+                # Get first store as default
+                default_store = Store.query.first()
+                if default_store:
+                    default_store_id = default_store.id
+                
+                items = FruitInventory.query.all()
+                for item in items:
+                    # Use fruit_type as key, store (item_id, quantity) tuple
+                    if item.fruit_type not in inventory_cache:
+                        inventory_cache[item.fruit_type] = (item.id, item.quantity)
+            
+            # Track class counts
+            previous_class_counts = {}  # {fruit_type: count}
+            current_class_counts = {}   # {fruit_type: count}
+            
             # FPS calculation variables
             frame_times = []
             detection_delta = 0.125
@@ -944,6 +1022,98 @@ def stream_video_websocket(ws):
                         # Update cache and detection time
                         cached_detections = processed_detections
                         last_detection_time = current_time
+                        
+                        # Count detected classes
+                        current_class_counts = {}
+                        for det in processed_detections:
+                            class_name = det['class']
+                            current_class_counts[class_name] = current_class_counts.get(class_name, 0) + 1
+                        
+                        # Compare with previous counts and update database
+                        # Batch all updates to do in a single database transaction
+                        updates_to_process = []
+                        
+                        # First, handle all currently detected fruits
+                        for fruit_type, current_count in current_class_counts.items():
+                            previous_count = previous_class_counts.get(fruit_type, 0)
+                            if current_count != previous_count:
+                                # Count changed - prepare update
+                                if fruit_type in inventory_cache:
+                                    item_id, old_quantity = inventory_cache[fruit_type]
+                                    updates_to_process.append({
+                                        'type': 'update',
+                                        'item_id': item_id,
+                                        'fruit_type': fruit_type,
+                                        'old_quantity': old_quantity,
+                                        'new_quantity': current_count
+                                    })
+                                    # Update cache immediately
+                                    inventory_cache[fruit_type] = (item_id, current_count)
+                                elif default_store_id is not None:
+                                    # Fruit type not in inventory - prepare creation
+                                    updates_to_process.append({
+                                        'type': 'create',
+                                        'fruit_type': fruit_type,
+                                        'quantity': current_count,
+                                        'store_id': default_store_id
+                                    })
+                        
+                        # Handle fruits that were previously detected but are no longer detected (count = 0)
+                        for fruit_type, previous_count in previous_class_counts.items():
+                            if fruit_type not in current_class_counts and previous_count > 0:
+                                # Fruit no longer detected - set quantity to 0
+                                if fruit_type in inventory_cache:
+                                    item_id, old_quantity = inventory_cache[fruit_type]
+                                    updates_to_process.append({
+                                        'type': 'update',
+                                        'item_id': item_id,
+                                        'fruit_type': fruit_type,
+                                        'old_quantity': old_quantity,
+                                        'new_quantity': 0
+                                    })
+                                    # Update cache immediately
+                                    inventory_cache[fruit_type] = (item_id, 0)
+                        
+                        # Process all updates in a single database transaction
+                        if updates_to_process:
+                            with app.app_context():
+                                for update in updates_to_process:
+                                    if update['type'] == 'update':
+                                        db_item = FruitInventory.query.get(update['item_id'])
+                                        if db_item:
+                                            db_item.quantity = update['new_quantity']
+                                            db_item.updated_at = datetime.utcnow()
+                                            notify_quantity_change(db_item, update['old_quantity'], update['new_quantity'])
+                                    elif update['type'] == 'create':
+                                        # Generate time-based random batch number
+                                        timestamp = datetime.utcnow()
+                                        random_suffix = random.randint(1000, 9999)
+                                        batch_number = f"BATCH-{timestamp.strftime('%Y%m%d')}-{random_suffix}"
+                                        
+                                        new_item = FruitInventory(
+                                            store_id=update['store_id'],
+                                            fruit_type=update['fruit_type'],
+                                            quantity=update['quantity'],
+                                            original_price=5.99,
+                                            current_price=5.99,
+                                            location_in_store="Camera Detection",
+                                            batch_number=batch_number
+                                        )
+                                        db.session.add(new_item)
+                                        db.session.flush()  # Get the ID without committing
+                                        inventory_cache[update['fruit_type']] = (new_item.id, update['quantity'])
+                                        
+                                        # Notify about quantity change (new item = increase from 0)
+                                        item_data = notify_quantity_change(new_item, 0, update['quantity'])
+                                        
+                                        # Also broadcast inventory_added event so frontend can add it to the list
+                                        broadcast_to_admins('inventory_added', item_data)
+                                
+                                # Commit all changes at once
+                                db.session.commit()
+                        
+                        # Update previous counts for next comparison
+                        previous_class_counts = current_class_counts.copy()
                     else:
                         # Use cached detections
                         processed_detections = cached_detections

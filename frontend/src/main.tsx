@@ -14,6 +14,7 @@ import BottomAscii from './components/BottomAscii'
 import TopHeader from './components/TopHeader'
 import FadeIn from './components/FadeIn'
 import AdminDashboard from './components/AdminDashboard'
+import InventoryView from './components/InventoryView'
 import { RiAnthropicFill } from "react-icons/ri"
 
 function App() {
@@ -33,6 +34,15 @@ function App() {
     return (
       <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000000' }}>
         <AdminDashboard />
+      </div>
+    );
+  }
+
+  // Admin Inventory page
+  if (currentPage === '#admin-inventory') {
+    return (
+      <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000000' }}>
+        <InventoryView />
       </div>
     );
   }
