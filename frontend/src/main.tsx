@@ -33,7 +33,6 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-<<<<<<< HEAD
   // Add/remove user-page class to enable scrolling on user page
   useEffect(() => {
     const isUserPage = currentPage === '#user';
@@ -44,9 +43,8 @@ function App() {
       root.classList.toggle('user-page', isUserPage);
     }
   }, [currentPage]);
-=======
->>>>>>> 049adc9ee618036322f9035e0bcc199332ab753a
-  // Show mobile terminal on mobile
+
+  // Show mobile terminal on mobile (applies to all pages)
   if (isMobile) {
     return <MobileTerminal />;
   }
@@ -95,11 +93,6 @@ function App() {
         <CustomerPortal />
       </div>
     );
-  }
-
-  // Show mobile terminal on mobile for landing page
-  if (isMobile) {
-    return <MobileTerminal />;
   }
 
   // Landing page
