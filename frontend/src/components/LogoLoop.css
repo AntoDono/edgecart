@@ -1,88 +1,94 @@
 .logoloop {
   position: relative;
   overflow: hidden;
-  width: 100%;
-  height: auto;
   user-select: none;
   -webkit-user-select: none;
+
+  --logoloop-gap: 32px;
+  --logoloop-logoHeight: 28px;
+}
+
+.logoloop::-webkit-scrollbar {
+  display: none;
+}
+
+.logoloop {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .logoloop__track {
   display: flex;
-  flex-direction: row;
+  width: max-content;
   will-change: transform;
+  user-select: none;
 }
 
 .logoloop__list {
   display: flex;
-  flex-direction: row;
   align-items: center;
-  gap: var(--logoloop-gap, 32px);
   list-style: none;
   margin: 0;
   padding: 0;
-  flex-shrink: 0;
 }
 
 .logoloop__item {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: var(--logoloop-logoHeight, 28px);
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  margin-right: var(--logoloop-gap);
+  font-size: var(--logoloop-logoHeight);
+  line-height: 1;
+  list-style: none;
 }
 
-.logoloop__item img {
-  height: 100%;
-  width: auto;
-  object-fit: contain;
-  display: block;
+.logoloop__item:last-child {
+  margin-right: var(--logoloop-gap);
 }
 
 .logoloop__node {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  height: 100%;
+}
+
+.logoloop__item img {
+  height: var(--logoloop-logoHeight);
+  width: auto;
+  display: block;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  pointer-events: none;
 }
 
 .logoloop__link {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  height: 100%;
   text-decoration: none;
   color: inherit;
+  border-radius: 4px;
+  transition: opacity 0.2s ease;
+}
+
+.logoloop__link:hover {
+  opacity: 0.8;
 }
 
 /* Fade effect */
-.logoloop--fade::before,
-.logoloop--fade::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  width: 10%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.logoloop--fade::before {
-  left: 0;
-  background: linear-gradient(
-    to right,
-    var(--logoloop-fadeColor, #000000),
-    transparent
+.logoloop--fade {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 10%,
+    black 90%,
+    transparent 100%
   );
-}
-
-.logoloop--fade::after {
-  right: 0;
-  background: linear-gradient(
-    to left,
-    var(--logoloop-fadeColor, #000000),
-    transparent
+  mask-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    black 10%,
+    black 90%,
+    transparent 100%
   );
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
 }
 
 /* Scale on hover */

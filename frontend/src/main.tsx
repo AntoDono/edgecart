@@ -7,6 +7,7 @@ import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import Balatro from './components/Balatro'
 import SimpleGlass from './components/SimpleGlass'
 import LogoLoop from './components/LogoLoop'
+import { RiAnthropicFill } from "react-icons/ri"
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -38,20 +39,24 @@ createRoot(document.getElementById('root')!).render(
       }}>
         <LogoLoop
           logos={[
-            { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '3rem', color: '#ffffff', textTransform: 'lowercase' }}>edgecart</span> },
+            { node: <img src="/edgecart.png" alt="edgecart" style={{ filter: 'brightness(0) invert(1)', transform: 'translateY(3px)' }} /> },
+            { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, color: '#ffffff' }}>✦</span> },
+            { node: <img src="/edgecart.png" alt="edgecart" style={{ filter: 'brightness(0) invert(1)', transform: 'translateY(3px)' }} /> },
+            { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, color: '#ffffff' }}>✦</span> },
           ]}
-          speed={0}
-          logoHeight={48}
-          gap={0}
+          speed={50}
+          direction="left"
+          logoHeight={40}
+          gap={48}
           pauseOnHover={false}
-          fadeOut={false}
+          fadeOut={true}
         />
       </div>
 
       {/* Subtitle - Below Title */}
       <div style={{
         position: 'fixed',
-        top: 'calc(50% - 325px + 60px)',
+        top: 'calc(50% - 325px + 50px)',
         left: 'calc(4rem + 450px)',
         right: 'calc(4rem + 450px)',
         zIndex: 3,
@@ -96,7 +101,7 @@ createRoot(document.getElementById('root')!).render(
       {/* Made With - Above Logo Loop */}
       <div style={{
         position: 'fixed',
-        bottom: 'calc(50% - 325px + 60px)',
+        bottom: 'calc(50% - 325px + 50px)',
         left: 'calc(4rem + 450px)',
         right: 'calc(4rem + 450px)',
         zIndex: 3,
@@ -104,7 +109,7 @@ createRoot(document.getElementById('root')!).render(
         justifyContent: 'center',
       }}>
         <p style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '1rem', color: '#ffffff', textTransform: 'lowercase', margin: 0, opacity: 0.7 }}>
-          made with:
+          made at hackprinceton with ♥︎ using
         </p>
       </div>
 
@@ -118,10 +123,10 @@ createRoot(document.getElementById('root')!).render(
       }}>
         <LogoLoop
           logos={[
-            { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '1.5rem', color: '#ffffff' }}>edgecart</span> },
-            { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '1.5rem', color: '#ffffff' }}>✦</span> },
-            { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '1.5rem', color: '#ffffff' }}>suscart</span> },
-            { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '1.5rem', color: '#ffffff' }}>✦</span> },
+            { node: <RiAnthropicFill style={{ color: '#ffffff' }} /> },
+            { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, color: '#ffffff' }}>✦</span> },
+            { node: <RiAnthropicFill style={{ color: '#ffffff' }} /> },
+            { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, color: '#ffffff' }}>✦</span> },
           ]}
           speed={50}
           direction="right"
@@ -129,7 +134,6 @@ createRoot(document.getElementById('root')!).render(
           gap={48}
           pauseOnHover={false}
           fadeOut={true}
-          fadeOutColor="#000000"
         />
       </div>
 
