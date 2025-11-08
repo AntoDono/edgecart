@@ -6,6 +6,7 @@ from torchvision import transforms
 from PIL import Image
 from pathlib import Path
 from tqdm import tqdm
+import os
 
 class RipeDetector(nn.Module):
     def __init__(self):
@@ -78,7 +79,7 @@ def load_data(path="./setup/data/dataset"):
     
     # Define transforms
     train_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((256, 256)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(10),
         transforms.ToTensor(),
@@ -86,7 +87,7 @@ def load_data(path="./setup/data/dataset"):
     ])
     
     test_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((256, 256)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
@@ -232,6 +233,8 @@ def train_model(model, train_dataset, test_dataset, epochs=10, batch_size=32, le
         print(f'  Test Loss: {avg_test_loss:.4f}, Test Accuracy: {test_acc:.2f}%')
         print('-' * 60)
     
+    # Create model directory if it doesn't exist
+    os.makedirs("./model", exist_ok=True)
     torch.save(model.state_dict(), "./model/ripe_detector.pth")
     print('Training completed! Model saved to ./model/ripe_detector.pth')
     return model
@@ -244,15 +247,38 @@ def load_model(path):
     model.load_state_dict(torch.load(path))
     return model
 
-def inference(model, image_path):
+def inference(model, image_path, device=None):
     """
     Inference the model on a single image.
+    
+    Args:
+        model: The trained RipeDetector model
+        image_path: Path to the image file
+        device: Device to run inference on (defaults to model's device)
+    
+    Returns:
+        Probability of being fresh (1 = fresh, 0 = rotten)
     """
+    if device is None:
+        device = next(model.parameters()).device
+    
+    # Use the same preprocessing as test data
+    transform = transforms.Compose([
+        transforms.Resize((256, 256)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
     image = Image.open(image_path).convert('RGB')
-    image = transforms.ToTensor()(image)
-    image = image.unsqueeze(0)
-    output = model(image)
-    return output
+    image = transform(image)
+    image = image.unsqueeze(0).to(device)
+    
+    model.eval()
+    with torch.no_grad():
+        output = model(image)
+        probability = torch.sigmoid(output).item()  # Convert logit to probability
+    
+    return probability  # Returns value between 0 (rotten) and 1 (fresh)
 
 if __name__ == "__main__":
     train_dataset, test_dataset = load_data()
