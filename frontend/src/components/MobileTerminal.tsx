@@ -1,61 +1,35 @@
 import React from 'react';
 import { FaGithub } from 'react-icons/fa';
 import { SiDevpost } from 'react-icons/si';
-import { Canvas } from '@react-three/fiber';
-import { EffectComposer, Bloom } from '@react-three/postprocessing';
-import Experience from '../Experience';
+import Balatro from './Balatro';
 import CustomerLogin from './CustomerLogin';
 import './MobileTerminal.css';
 
 const MobileTerminal = () => {
-  const asciiArt = `....................
-.....+++++++*+*+:...
-:*##-:+********:....
-...+##==*****+-##=:.
-...:*##==***==##*-..
-....=###+-*=+###+...
-.....####+:=*++=:...
-.....-#++++++++-....
-.......::.:::::.....
-......-#*:..=**.....
-....................`;
-
   return (
     <div className="mobile-terminal">
-      {/* ORB Background */}
+      {/* Balatro Background */}
       <div className="mobile-background">
-        <Canvas
-          style={{ width: '100%', height: '100%', pointerEvents: 'auto' }}
-          gl={{
-            antialias: true,
-            toneMapping: 3,
-            outputEncoding: 3,
-            alpha: true,
-          }}
-          dpr={[1, 2]}
-          camera={{
-            fov: 45,
-            near: 0.1,
-            far: 200,
-            position: [0, 0, 6]
-          }}
-        >
-          <Experience />
-          <EffectComposer multisampling={8}>
-            <Bloom
-              intensity={2.0}
-              luminanceThreshold={0.2}
-              luminanceSmoothing={0.9}
-              mipmapBlur
-            />
-          </EffectComposer>
-        </Canvas>
+        <Balatro
+          isRotate={false}
+          mouseInteraction={true}
+          pixelFilter={6969}
+          color1="#101111ff"
+          color2="#2a382aff"
+          color3="#000000ff"
+          spinRotation={-2.0}
+          spinSpeed={7.0}
+          contrast={1.5}
+          lighting={0.4}
+          spinAmount={0.25}
+          spinEase={1.0}
+        />
       </div>
 
       {/* Top Header */}
       <div className="mobile-top-header">
         <a
-          href="https://github.com"
+          href="https://github.com/AntoDono/edgecart"
           target="_blank"
           rel="noopener noreferrer"
           className="mobile-header-icon"
@@ -72,7 +46,7 @@ const MobileTerminal = () => {
         <span className="mobile-header-spacer">✦</span>
 
         <a
-          href="https://devpost.com"
+          href="https://devpost.com/software/edgecart"
           target="_blank"
           rel="noopener noreferrer"
           className="mobile-header-icon"
@@ -83,16 +57,8 @@ const MobileTerminal = () => {
 
       {/* Mobile Login Container */}
       <div className="mobile-login-container">
-        {/* Login Component */}
-        <div className="mobile-login">
-          <CustomerLogin />
-        </div>
-
-        {/* Footer - ASCII Art */}
-        <div className="mobile-footer">
-          <pre className="mobile-ascii-art">{asciiArt}</pre>
-          <p className="mobile-footer-text">made with ♥︎ at hackprinceton</p>
-        </div>
+        <CustomerLogin />
+        <p className="mobile-footer-text">made with ♥︎ at hackprinceton</p>
       </div>
     </div>
   );
