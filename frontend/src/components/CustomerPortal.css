@@ -1,13 +1,14 @@
 .customer-portal {
   width: 100%;
   min-height: 100vh;
-  background: linear-gradient(135deg, #0a0f0a 0%, #1a2f1a 100%);
+  background: #000000;
   color: #e0e0e0;
   font-family: 'Geist Mono', monospace;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
+  position: relative;
 }
 
 .customer-portal::-webkit-scrollbar {
@@ -201,13 +202,14 @@
 
 /* Portal Header */
 .portal-header {
-  background: rgba(20, 30, 20, 0.95);
-  border-bottom: 1px solid #2a4a2a;
+  background: rgba(16, 17, 17, 0.4);
+  border-bottom: 1px solid rgba(126, 202, 156, 0.2);
   padding: 1rem 2rem;
   position: sticky;
   top: 0;
   z-index: 100;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .header-content {
@@ -225,6 +227,9 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  text-transform: lowercase;
+  font-weight: 400;
+  letter-spacing: 0.05em;
 }
 
 .header-actions {
@@ -255,7 +260,7 @@
 }
 
 .status-dot.disconnected {
-  background: #ef4444;
+  background: #fe8019;
   animation: none;
 }
 
@@ -266,18 +271,52 @@
 
 .logout-btn {
   padding: 0.5rem 1rem;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(254, 128, 25, 0.1);
+  border: 1px solid rgba(254, 128, 25, 0.3);
   border-radius: 6px;
-  color: #ef4444;
+  color: #fe8019;
   cursor: pointer;
   font-family: 'Geist Mono', monospace;
   transition: all 0.2s;
 }
 
 .logout-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
+  background: rgba(254, 128, 25, 0.2);
+  border-color: #fe8019;
+}
+
+/* Mobile header adjustments */
+@media (max-width: 768px) {
+  .portal-header {
+    padding: 0.75rem 1rem;
+  }
+
+  .header-content img {
+    height: 24px !important;
+  }
+
+  .header-actions {
+    gap: 0.5rem;
+  }
+
+  .connection-status {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.65rem;
+  }
+
+  .status-dot {
+    width: 5px;
+    height: 5px;
+  }
+
+  .logout-btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.65rem;
+  }
+
+  .portal-content {
+    padding: 1rem;
+  }
 }
 
 /* Portal Content */
@@ -285,6 +324,8 @@
   max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
+  position: relative;
+  z-index: 1;
 }
 
 .customer-info-section {
@@ -295,10 +336,44 @@
 }
 
 .info-card {
-  background: rgba(20, 30, 20, 0.6);
-  border: 1px solid #2a4a2a;
+  background: rgba(16, 17, 17, 0.6);
+  border: 1px solid rgba(126, 202, 156, 0.2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-radius: 12px;
   padding: 1.5rem;
+}
+
+.info-card h2,
+.info-card h3,
+.recommendations-section h2,
+.transactions-section h2,
+.section-header h2 {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #7ECA9C 0%, #4ade80 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-align: left;
+}
+
+.info-card h2 .animated-gradient-text,
+.info-card h3 .animated-gradient-text,
+.recommendations-section h2 .animated-gradient-text,
+.transactions-section h2 .animated-gradient-text,
+.section-header h2 .animated-gradient-text {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  background: transparent !important;
+  margin: 0 !important;
 }
 
 .info-card h2 {
@@ -307,14 +382,39 @@
   color: #7ECA9C;
 }
 
-.customer-details p {
+.customer-details {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.customer-info-left {
+  flex: 1;
+}
+
+.customer-info-left p {
   margin: 0.5rem 0;
   color: #c0c0c0;
   font-size: 0.95rem;
 }
 
-.customer-details strong {
+.customer-info-left strong {
   color: #e0e0e0;
+}
+
+.customer-icon-right {
+  font-size: 4rem;
+  color: rgba(126, 202, 156, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(126, 202, 156, 0.05);
+  border: 1px solid rgba(126, 202, 156, 0.15);
+  border-radius: 12px;
+  padding: 1.5rem;
+  min-width: 100px;
+  min-height: 100px;
 }
 
 .knot-badge {
@@ -409,10 +509,12 @@
 .empty-state {
   text-align: center;
   padding: 3rem 2rem;
-  background: rgba(20, 30, 20, 0.4);
-  border: 1px dashed #2a4a2a;
+  background: rgba(16, 17, 17, 0.4);
+  border: 1px dashed rgba(126, 202, 156, 0.3);
   border-radius: 12px;
   color: #a0a0a0;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .empty-state .hint {
@@ -427,13 +529,15 @@
 }
 
 .recommendation-card {
-  background: rgba(20, 30, 20, 0.8);
-  border: 1px solid #2a4a2a;
+  background: rgba(16, 17, 17, 0.7);
+  border: 1px solid rgba(126, 202, 156, 0.2);
   border-radius: 12px;
   padding: 1.5rem;
   position: relative;
   cursor: pointer;
   transition: all 0.3s;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .recommendation-card:hover {
@@ -464,10 +568,16 @@
 }
 
 .rec-header h3 {
+  font-family: 'Montserrat', sans-serif;
   font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
   margin: 0;
-  text-transform: capitalize;
-  color: #e0e0e0;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #7ECA9C 0%, #4ade80 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .variety {
@@ -491,16 +601,17 @@
 
 .original-price {
   font-size: 1.2rem;
-  color: #808080;
+  color: #ef4444;
   text-decoration: line-through;
+  opacity: 0.8;
 }
 
 .discount-badge {
   padding: 0.25rem 0.75rem;
-  background: rgba(239, 68, 68, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: rgba(254, 128, 25, 0.2);
+  border: 1px solid rgba(254, 128, 25, 0.4);
   border-radius: 6px;
-  color: #ef4444;
+  color: #fe8019;
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -513,15 +624,18 @@
 }
 
 .freshness-bar {
-  height: 6px;
-  border-radius: 3px;
+  height: 8px;
+  border-radius: 4px;
   margin-bottom: 0.5rem;
-  transition: width 0.3s;
+  transition: width 0.3s, background-color 0.3s;
+  min-width: 20px;
 }
 
 .freshness-label {
   font-size: 0.85rem;
   color: #c0c0c0;
+  font-weight: 500;
+  display: block;
 }
 
 .rec-reason {
@@ -547,11 +661,18 @@
 .rec-details {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   font-size: 0.85rem;
   color: #a0a0a0;
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid #2a4a2a;
+}
+
+.rec-details span {
+  white-space: nowrap;
 }
 
 .purchased-badge {
@@ -575,9 +696,20 @@
 }
 
 .notifications-section h2 {
-  font-size: 1.3rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
   margin-bottom: 1rem;
-  color: #e0e0e0;
+}
+
+.notifications-section h2 .animated-gradient-text {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-align: left;
 }
 
 .notifications-list {
@@ -649,10 +781,12 @@
 .transaction-toggle {
   display: flex;
   gap: 0.5rem;
-  background: rgba(20, 30, 20, 0.6);
+  background: rgba(16, 17, 17, 0.5);
   padding: 0.25rem;
   border-radius: 8px;
-  border: 1px solid #2a4a2a;
+  border: 1px solid rgba(126, 202, 156, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .toggle-btn {
@@ -718,12 +852,14 @@
 }
 
 .transaction-card {
-  background: rgba(20, 30, 20, 0.8);
-  border: 1px solid #2a4a2a;
+  background: rgba(16, 17, 17, 0.7);
+  border: 1px solid rgba(126, 202, 156, 0.2);
   border-radius: 10px;
   padding: 1.25rem;
   margin-bottom: 1rem;
   transition: all 0.2s;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 .transaction-card:hover {
@@ -800,9 +936,9 @@
 }
 
 .status-badge.failed {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(254, 128, 25, 0.2);
+  color: #fe8019;
+  border: 1px solid rgba(254, 128, 25, 0.3);
 }
 
 .order-link {
@@ -857,8 +993,8 @@
   margin-top: 0.5rem;
 }
 
-/* SusCart Transaction Styling */
-.suscart-transaction .transaction-info {
+/* EdgeCart Transaction Styling */
+.edgecart-transaction .transaction-info {
   flex-direction: row;
   align-items: center;
   gap: 0.75rem;
@@ -907,7 +1043,7 @@
 
 .discount-value {
   font-weight: 600;
-  color: #ef4444;
+  color: #fe8019;
 }
 
 .savings-value {
@@ -915,7 +1051,7 @@
   color: #4ade80;
 }
 
-.suscart-badge {
+.edgecart-badge {
   font-size: 0.75rem;
   color: #7ECA9C;
   text-align: right;
@@ -928,9 +1064,20 @@
 }
 
 .savings-section h2 {
-  font-size: 1.3rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
   margin-bottom: 1rem;
-  color: #e0e0e0;
+}
+
+.savings-section h2 .animated-gradient-text {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-align: left;
 }
 
 .savings-grid {
@@ -976,10 +1123,20 @@
 }
 
 .how-it-works h2 {
-  font-size: 1.3rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
   margin-bottom: 1.5rem;
-  text-align: center;
-  color: #e0e0e0;
+  text-transform: uppercase;
+}
+
+.how-it-works h2 .animated-gradient-text {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-align: left;
 }
 
 .steps-grid {
@@ -999,9 +1156,16 @@
 }
 
 .step h3 {
+  font-family: 'Montserrat', sans-serif;
   font-size: 1.1rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
   margin-bottom: 0.5rem;
-  color: #7ECA9C;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, #7ECA9C 0%, #4ade80 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .step p {
