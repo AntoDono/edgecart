@@ -1,0 +1,67 @@
+.bottom-ascii-container {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 900px;
+  height: 100px;
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
+  border-top-left-radius: 50%;
+  border-top-right-radius: 50%;
+  padding-top: 1.5rem;
+  overflow: hidden;
+}
+
+.ascii-content {
+  display: flex;
+  gap: 0;
+  justify-content: center;
+  align-items: flex-end;
+  font-family: 'Geist Mono', monospace;
+  line-height: 1.0;
+  font-size: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.ascii-left,
+.ascii-center,
+.ascii-right {
+  margin: 0;
+  white-space: pre;
+}
+
+.ascii-left {
+  color: #7ECA9C;
+  opacity: 0.15;
+  filter: blur(0.5px);
+}
+
+.ascii-center {
+  color: #7ECA9C;
+  opacity: 1;
+}
+
+.ascii-right {
+  color: #7ECA9C;
+  opacity: 0.15;
+  filter: blur(0.5px);
+}
+
+@media (max-width: 1200px) {
+  .bottom-ascii-container {
+    max-width: 900px;
+  }
+
+  .ascii-left,
+  .ascii-right {
+    display: none;
+  }
+}

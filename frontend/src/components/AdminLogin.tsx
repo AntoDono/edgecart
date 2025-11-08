@@ -11,7 +11,7 @@ interface TerminalLine {
 
 const Terminal = () => {
   const [lines, setLines] = useState<TerminalLine[]>([]);
-  const [showFastfetch, setShowFastfetch] = useState(true);
+  const showFastfetch = true;
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const generateTimestamp = () => {

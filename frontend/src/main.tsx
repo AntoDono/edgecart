@@ -10,6 +10,8 @@ import GradualBlur from './components/GradualBlur'
 import LogoLoop from './components/LogoLoop'
 import AdminLogin from './components/AdminLogin'
 import CustomerLogin from './components/CustomerLogin'
+import BottomAscii from './components/BottomAscii'
+import TopHeader from './components/TopHeader'
 import { RiAnthropicFill } from "react-icons/ri"
 
 function App() {
@@ -200,6 +202,12 @@ function App() {
         opacity={0.35}
         zIndex={999}
       />
+
+      {/* Top Header */}
+      <TopHeader />
+
+      {/* Bottom ASCII Art */}
+      <BottomAscii />
 
       {/* Made With - Above Logo Loop */}
       <div style={{
