@@ -7,6 +7,7 @@ import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import Balatro from './components/Balatro'
 import SimpleGlass from './components/SimpleGlass'
 import LogoLoop from './components/LogoLoop'
+import AdminLogin from './components/AdminLogin'
 import { RiAnthropicFill } from "react-icons/ri"
 
 createRoot(document.getElementById('root')!).render(
@@ -77,9 +78,7 @@ createRoot(document.getElementById('root')!).render(
         zIndex: 2,
       }}>
         <SimpleGlass width={450} height={650} borderRadius={0}>
-          <h2 style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '2rem', color: '#ffffff', textTransform: 'lowercase' }}>
-            suscart
-          </h2>
+          <AdminLogin />
         </SimpleGlass>
       </div>
 
