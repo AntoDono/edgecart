@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, useState, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import './App.css'
 import Experience from './Experience'
@@ -9,10 +9,41 @@ import FaultyTerminal from './components/FaultyTerminal'
 import GradualBlur from './components/GradualBlur'
 import LogoLoop from './components/LogoLoop'
 import AdminLogin from './components/AdminLogin'
+import CustomerLogin from './components/CustomerLogin'
 import { RiAnthropicFill } from "react-icons/ri"
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+function App() {
+  const [currentPage, setCurrentPage] = useState(window.location.hash);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setCurrentPage(window.location.hash);
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // Admin page
+  if (currentPage === '#admin') {
+    return (
+      <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000000' }}>
+        {/* Admin page content */}
+      </div>
+    );
+  }
+
+  // User page
+  if (currentPage === '#user') {
+    return (
+      <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000000' }}>
+        {/* User page content */}
+      </div>
+    );
+  }
+
+  // Landing page
+  return (
     <div style={{ width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0, backgroundColor: '#000000' }}>
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}>
         <Balatro
@@ -143,10 +174,8 @@ createRoot(document.getElementById('root')!).render(
             brightness={0.6}
           />
         </div>
-        <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: '420px', height: '650px', zIndex: 1, right: '3rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <h2 style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '2rem', color: '#ffffff', textTransform: 'lowercase' }}>
-            customer
-          </h2>
+        <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: '420px', height: '650px', zIndex: 1, right: '3rem' }}>
+          <CustomerLogin />
         </div>
       </div>
 
@@ -158,7 +187,7 @@ createRoot(document.getElementById('root')!).render(
         strength={5}
         curve="ease-out"
         divCount={8}
-        opacity={0.6}
+        opacity={0.35}
         zIndex={999}
       />
       <GradualBlur
@@ -168,7 +197,7 @@ createRoot(document.getElementById('root')!).render(
         strength={5}
         curve="ease-out"
         divCount={8}
-        opacity={0.6}
+        opacity={0.35}
         zIndex={999}
       />
 
@@ -240,5 +269,11 @@ createRoot(document.getElementById('root')!).render(
         </Canvas>
       </div>
     </div>
+  );
+}
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
   </StrictMode>
 )

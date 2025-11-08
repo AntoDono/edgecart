@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { AwesomeButton } from 'react-awesome-button';
 import 'react-awesome-button/dist/styles.css';
 import GradientText from './GradientText';
-import './AdminLogin.css';
+import './CustomerLogin.css';
 
 interface TerminalLine {
   text: string;
@@ -18,23 +18,21 @@ const Terminal = () => {
   };
 
   const terminalMessages = [
-    'Initializing EdgeCart monitoring system...',
-    'Camera feed connected: Store_A_Produce_01',
-    'AI model loaded: freshness-detection-v2.3',
-    'Scanning inventory... 247 items detected',
-    'Freshness analysis: 89% optimal, 11% degrading',
-    'Customer pattern analysis running...',
-    'Price optimization engine: ACTIVE',
-    'Notification queue: 12 pending',
-    'Knot API: Connected - 1,247 active users',
-    'Predictive model accuracy: 94.2%',
-    'Waste reduction today: 34.7 lbs',
-    'Revenue recovery: $287.45',
-    'Alert: Bananas shelf B3 - 68% freshness',
-    'Matched 23 customers for banana discount',
-    'Notifications sent: 23/23 delivered',
-    'Avocado inventory: Reduce next order by 15%',
-    'System health: All services nominal',
+    'Connecting to EdgeCart customer portal...',
+    'Authentication service: Ready',
+    'Loading personalized offers...',
+    'Scanning local inventory data...',
+    'Fresh produce deals: 12 available',
+    'Your saved preferences loaded',
+    'Nearby stores: 3 detected',
+    'Price comparison active',
+    'Freshness notifications enabled',
+    'Smart shopping list synced',
+    'Weekly savings tracker: $23.50',
+    'Waste prevention tips ready',
+    'Seasonal recommendations loaded',
+    'Loyalty rewards: 450 points',
+    'System ready for login',
   ];
 
   useEffect(() => {
@@ -84,7 +82,7 @@ const Terminal = () => {
           <span className="terminal-button minimize"></span>
           <span className="terminal-button maximize"></span>
         </div>
-        <div className="terminal-title">edgecart-system-monitor</div>
+        <div className="terminal-title">edgecart-customer-portal</div>
       </div>
       <div className="terminal-body">
         {lines.map((line, index) => (
@@ -99,16 +97,16 @@ const Terminal = () => {
   );
 };
 
-const AdminLogin = () => {
+const CustomerLogin = () => {
   return (
-    <div className="admin-login">
-      <h2 className="admin-title">
+    <div className="customer-login">
+      <h2 className="customer-title">
         <GradientText
           colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
           animationSpeed={4}
           showBorder={false}
         >
-          ADMINISTRATOR //
+          \\ CUSTOMER
         </GradientText>
       </h2>
 
@@ -121,13 +119,13 @@ const AdminLogin = () => {
       <Terminal />
 
       <div className="login-button-wrapper">
-        <AwesomeButton type="primary" onPress={() => window.location.hash = '#admin'}>
+        <AwesomeButton type="primary" onPress={() => window.location.hash = '#user'}>
           <GradientText
             colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
             animationSpeed={4}
             showBorder={false}
           >
-            ACCESS SYSTEM
+            LOG IN
           </GradientText>
         </AwesomeButton>
       </div>
@@ -135,4 +133,4 @@ const AdminLogin = () => {
   );
 };
 
-export default AdminLogin;
+export default CustomerLogin;
