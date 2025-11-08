@@ -6,8 +6,9 @@ import json
 import os
 import cv2
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
+import threading
 
 # Load environment variables
 load_dotenv()
@@ -117,6 +118,73 @@ def notify_customer(customer_id, event_type, data):
             }))
         except Exception:
             del customer_connections[customer_id]
+
+
+def update_freshness_from_camera(inventory_id, ripe_score, confidence):
+    """
+    Update freshness status from camera detection (async)
+    Called automatically when camera detects ripeness
+    """
+    try:
+        with app.app_context():
+            # Get or create freshness status
+            freshness = FreshnessStatus.query.filter_by(inventory_id=inventory_id).first()
+            
+            if not freshness:
+                freshness = FreshnessStatus(inventory_id=inventory_id)
+                db.session.add(freshness)
+            
+            # Update freshness data
+            freshness.freshness_score = ripe_score
+            freshness.confidence_level = confidence
+            freshness.last_checked = datetime.utcnow()
+            
+            # Predict expiry based on ripeness (simple heuristic)
+            # Higher ripeness = closer to expiry
+            days_until_expiry = int((ripe_score / 100) * 10)  # 0-10 days
+            freshness.predicted_expiry_date = datetime.utcnow() + timedelta(days=days_until_expiry)
+            
+            # Calculate discount and status
+            old_discount = freshness.discount_percentage
+            freshness.discount_percentage = freshness.calculate_discount()
+            freshness.update_status()
+            
+            # Update inventory price if discount changed
+            inventory = FruitInventory.query.get(inventory_id)
+            if inventory and freshness.discount_percentage != old_discount:
+                inventory.current_price = round(
+                    inventory.original_price * (1 - freshness.discount_percentage / 100),
+                    2
+                )
+                inventory.updated_at = datetime.utcnow()
+            
+            db.session.commit()
+            
+            # Broadcast update to admin dashboard
+            broadcast_to_admins('freshness_updated', {
+                'inventory_id': inventory_id,
+                'freshness': freshness.to_dict(),
+                'item': inventory.to_dict() if inventory else None,
+                'source': 'camera'
+            })
+            
+            # Send alert if critical
+            if freshness.status == 'critical':
+                broadcast_to_admins('freshness_alert', {
+                    'message': f'Camera detected critical ripeness: {inventory.fruit_type}' if inventory else 'Critical item detected',
+                    'inventory_id': inventory_id,
+                    'freshness_score': freshness.freshness_score
+                })
+            
+            # Trigger recommendations if discount changed and significant
+            if freshness.discount_percentage > old_discount and freshness.discount_percentage >= 20:
+                print(f"🎯 Triggering recommendations for item {inventory_id} (discount: {freshness.discount_percentage}%)")
+                generate_recommendations_for_item(inventory_id)
+    
+    except Exception as e:
+        print(f"❌ Error updating freshness from camera: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def notify_quantity_change(item, old_quantity, new_quantity):
@@ -493,6 +561,61 @@ def get_customer(customer_id):
         return jsonify({'error': str(e)}), 404
 
 
+@app.route('/api/customers/<int:customer_id>/purchases', methods=['GET'])
+def get_customer_purchases(customer_id):
+    """Get customer's purchase history"""
+    try:
+        # Verify customer exists
+        customer = Customer.query.get_or_404(customer_id)
+        
+        # Get purchases ordered by most recent first
+        purchases = PurchaseHistory.query.filter_by(
+            customer_id=customer_id
+        ).order_by(PurchaseHistory.purchase_date.desc()).all()
+        
+        return jsonify({
+            'count': len(purchases),
+            'customer': {
+                'id': customer.id,
+                'name': customer.name
+            },
+            'purchases': [p.to_dict() for p in purchases]
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 404
+
+
+@app.route('/api/customers/<int:customer_id>/knot-transactions', methods=['GET'])
+def get_customer_knot_transactions(customer_id):
+    """Get customer's original Knot transaction data"""
+    try:
+        customer = Customer.query.get_or_404(customer_id)
+        
+        if not customer.knot_customer_id:
+            return jsonify({
+                'error': 'Customer not connected to Knot',
+                'transactions': []
+            }), 200
+        
+        # Fetch fresh transactions from Knot
+        transactions = knot_client.get_customer_transactions(
+            customer.knot_customer_id,
+            limit=25
+        )
+        
+        return jsonify({
+            'count': len(transactions),
+            'customer': {
+                'id': customer.id,
+                'name': customer.name,
+                'knot_customer_id': customer.knot_customer_id
+            },
+            'transactions': transactions
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/customers/<int:customer_id>/notify', methods=['POST'])
 def notify_customer_api(customer_id):
     """API endpoint to send notification to a customer via WebSocket"""
@@ -728,14 +851,19 @@ def generate_recommendations_for_item(inventory_id):
     try:
         item = FruitInventory.query.get(inventory_id)
         if not item or not item.freshness:
+            print(f"⚠️  Item {inventory_id} not found or has no freshness data")
             return
         
         # Only recommend if there's a decent discount
         if item.freshness.discount_percentage < 15:
+            print(f"⚠️  Item {inventory_id} discount too low ({item.freshness.discount_percentage}%), skipping recommendations")
             return
+        
+        print(f"🔍 Finding customers who like {item.fruit_type} (discount: {item.freshness.discount_percentage}%)")
         
         # Find customers who like this fruit type
         customers = Customer.query.all()
+        recommendations_created = []
         
         for customer in customers:
             prefs = customer.get_preferences()
@@ -743,10 +871,14 @@ def generate_recommendations_for_item(inventory_id):
             max_price = prefs.get('max_price', 10.0)
             preferred_discount = prefs.get('preferred_discount', 20)
             
+            print(f"  Checking customer {customer.id} ({customer.name}): favorites={favorite_fruits}")
+            
             # Check if this item matches customer preferences
             if (item.fruit_type in favorite_fruits and 
                 item.current_price <= max_price and
                 item.freshness.discount_percentage >= preferred_discount):
+                
+                print(f"  ✅ Match! Creating recommendation for customer {customer.id}")
                 
                 # Create recommendation
                 recommendation = Recommendation(
@@ -764,14 +896,36 @@ def generate_recommendations_for_item(inventory_id):
                 })
                 
                 db.session.add(recommendation)
+                db.session.flush()  # Get ID without committing
                 
-                # Notify customer
-                notify_customer(customer.id, 'new_recommendation', recommendation.to_dict())
+                # Store for notification after commit
+                recommendations_created.append({
+                    'customer_id': customer.id,
+                    'recommendation': recommendation
+                })
         
+        # Commit all recommendations at once
         db.session.commit()
+        
+        # NOW send notifications (after commit, so data is in DB)
+        for rec_info in recommendations_created:
+            customer_id = rec_info['customer_id']
+            recommendation = rec_info['recommendation']
+            
+            print(f"📨 Sending notification to customer {customer_id} for recommendation {recommendation.id}")
+            
+            # Send notification with full data
+            notify_customer(customer_id, 'new_recommendation', {
+                'recommendation_id': recommendation.id,
+                'item': recommendation.to_dict()
+            })
+        
+        print(f"✅ Created {len(recommendations_created)} recommendations for item {inventory_id}")
     
     except Exception as e:
-        print(f"Error generating recommendations: {e}")
+        print(f"❌ Error generating recommendations: {e}")
+        import traceback
+        traceback.print_exc()
         db.session.rollback()
 
 
@@ -887,16 +1041,20 @@ def admin_websocket(ws):
 @sock.route('/ws/customer/<int:customer_id>')
 def customer_websocket(ws, customer_id):
     """WebSocket for customer app - real-time notifications"""
+    print(f"🔌 Customer {customer_id} connecting to WebSocket...")
     customer_connections[customer_id] = ws
+    
     try:
         # Send welcome message
         ws.send(json.dumps({
             'type': 'connected',
             'message': 'Connected to SusCart notifications',
+            'customer_id': customer_id,
             'timestamp': datetime.utcnow().isoformat()
         }))
+        print(f"✅ Customer {customer_id} WebSocket connected")
         
-        # Keep connection alive
+        # Keep connection alive and listen for messages
         while True:
             data = ws.receive()
             if data:
@@ -905,18 +1063,23 @@ def customer_websocket(ws, customer_id):
                     action_data = json.loads(data)
                     if action_data.get('action') == 'view_recommendation':
                         rec_id = action_data.get('recommendation_id')
-                        rec = Recommendation.query.get(rec_id)
-                        if rec:
-                            rec.viewed = True
-                            db.session.commit()
-                except json.JSONDecodeError:
-                    pass
+                        with app.app_context():
+                            rec = Recommendation.query.get(rec_id)
+                            if rec:
+                                rec.viewed = True
+                                db.session.commit()
+                                print(f"✓ Customer {customer_id} viewed recommendation {rec_id}")
+                except json.JSONDecodeError as e:
+                    print(f"⚠️  Customer {customer_id} sent invalid JSON: {e}")
     
     except Exception as e:
-        print(f"Customer WebSocket error: {e}")
+        print(f"❌ Customer {customer_id} WebSocket error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         if customer_id in customer_connections:
             del customer_connections[customer_id]
+        print(f"🔌 Customer {customer_id} WebSocket disconnected")
 
 
 @sock.route('/ws/stream_video')
@@ -1011,6 +1174,17 @@ def stream_video_websocket(ws):
                                 cropped = crop_bounding_box(frame, bbox)
                                 if cropped is not None:
                                     ripe_score = get_ripe_percentage(cropped, ripe_model, ripe_device, ripe_transform)
+                                    
+                                    # 🎯 INTEGRATION: Update freshness in database automatically!
+                                    # Check if this fruit is in our inventory
+                                    if class_name in inventory_cache and ripe_score is not None:
+                                        item_id, _ = inventory_cache[class_name]
+                                        # Update freshness asynchronously to not block video stream
+                                        threading.Thread(
+                                            target=update_freshness_from_camera,
+                                            args=(item_id, ripe_score, confidence),
+                                            daemon=True
+                                        ).start()
                             
                             processed_detections.append({
                                 'bbox': bbox,  # [x1, y1, x2, y2]
