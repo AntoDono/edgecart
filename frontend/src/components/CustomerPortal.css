@@ -5,6 +5,7 @@
   color: #e0e0e0;
   font-family: 'Geist Mono', monospace;
   overflow-x: hidden;
+  /* Remove overflow-y from here - let parent handle scrolling */
   overflow-y: auto;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
@@ -16,11 +17,11 @@
 
 .customer-portal.login-view {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 2rem;
   min-height: 100vh;
-  overflow-y: auto;
+  /* Let parent handle scrolling */
 }
 
 .login-container {
