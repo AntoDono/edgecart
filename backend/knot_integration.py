@@ -29,32 +29,54 @@ class KnotAPIClient:
         Initialize Knot API client
         
         Args:
-            client_id: Knot client ID (defaults to KNOT_CLIENT_ID env variable)
-            secret: Knot secret (defaults to KNOT_SECRET env variable)
+            client_id: Knot client ID
+            secret: Knot secret
         """
-        self.client_id = client_id or os.getenv('KNOT_CLIENT_ID', 'dda0778d-9486-47f8-bd80-6f2512f9bcdb')
-        self.secret = secret or os.getenv('KNOT_SECRET', '884d84e855054c32a8e39d08fcd9845d')
+        # SECURITY: Credentials should ONLY be in .env file (gitignored)
+        # Never commit credentials to code
+        self.client_id = client_id or os.getenv('KNOT_CLIENT_ID')
+        self.secret = secret or os.getenv('KNOT_SECRET')
         
-        # Use development endpoint (for testing) or production
-        self.base_url = os.getenv('KNOT_API_URL', 'https://development.knotapi.com')
+        # Determine which environment to use
+        knot_env = os.getenv('KNOT_ENV', 'tunnel')  # tunnel, dev, or prod
         
-        # Create Basic Auth header
-        credentials = f"{self.client_id}:{self.secret}"
-        encoded = base64.b64encode(credentials.encode()).decode()
+        # Set base URL based on environment
+        if knot_env == 'prod':
+            self.base_url = 'https://api.knotapi.com'
+        elif knot_env == 'dev':
+            self.base_url = 'https://development.knotapi.com'
+        else:  # tunnel (default)
+            self.base_url = 'https://knot.tunnel.tel'
         
-        self.headers = {
-            'Authorization': f'Basic {encoded}',
-            'Content-Type': 'application/json'
-        }
+        # Allow manual override
+        self.base_url = os.getenv('KNOT_API_URL', self.base_url)
+        
+        # Set up authentication
+        # tunnel.tel doesn't need auth, but dev/prod do
+        if knot_env in ['dev', 'prod'] or 'knotapi.com' in self.base_url:
+            # Use Basic Auth for dev/prod
+            credentials = f"{self.client_id}:{self.secret}"
+            encoded = base64.b64encode(credentials.encode()).decode()
+            self.headers = {
+                'Authorization': f'Basic {encoded}',
+                'Content-Type': 'application/json'
+            }
+            print(f"📡 Using Knot API: {self.base_url} (with auth)")
+        else:
+            # No auth for tunnel.tel
+            self.headers = {
+                'Content-Type': 'application/json'
+            }
+            print(f"📡 Using Knot API: {self.base_url} (no auth needed)")
     
-    def sync_transactions(self, external_user_id, merchant_ids=None, limit=100, cursor=None):
+    def sync_transactions(self, external_user_id, merchant_ids=None, limit=5, cursor=None):
         """
-        Sync transactions from Knot API
+        Sync transactions from Knot API (tunnel.tel endpoint)
         
         Args:
-            external_user_id: Your customer's ID in your system
+            external_user_id: Your customer's ID in your system (use 'abc' for test)
             merchant_ids: List of merchant IDs to sync (defaults to grocery stores)
-            limit: Maximum number of transactions to return (default 100)
+            limit: Maximum number of transactions to return (default 5)
             cursor: Pagination cursor for next page
             
         Returns:
@@ -90,16 +112,27 @@ class KnotAPIClient:
                     json=payload,
                     timeout=10
                 )
+                
+                # Debug: Print response for troubleshooting
+                if response.status_code != 200:
+                    print(f"⚠️  Status {response.status_code} from merchant {merchant_id}")
+                    print(f"   Response: {response.text[:200]}")
+                
                 response.raise_for_status()
                 data = response.json()
                 
+                # Response format: {"merchant": {...}, "transactions": [...], "next_cursor": "...", "limit": 5}
                 transactions = data.get('transactions', [])
                 all_transactions.extend(transactions)
                 
-                print(f"✅ Synced {len(transactions)} transactions from merchant {merchant_id}")
+                merchant_name = data.get('merchant', {}).get('name', f'Merchant {merchant_id}')
+                print(f"✅ Synced {len(transactions)} transactions from {merchant_name}")
                 
             except requests.exceptions.RequestException as e:
                 print(f"⚠️  Error syncing from merchant {merchant_id}: {e}")
+                # Print more details for debugging
+                if hasattr(e, 'response') and e.response is not None:
+                    print(f"   Response body: {e.response.text[:500]}")
                 continue
         
         return {
@@ -108,13 +141,13 @@ class KnotAPIClient:
             'external_user_id': external_user_id
         }
     
-    def get_customer_transactions(self, external_user_id, limit=100):
+    def get_customer_transactions(self, external_user_id, limit=5):
         """
         Convenience method to get all grocery transactions for a customer
         
         Args:
-            external_user_id: Your customer's ID
-            limit: Max transactions per merchant
+            external_user_id: Your customer's ID (use 'abc' for test)
+            limit: Max transactions per merchant (default 5)
             
         Returns:
             list: All transactions
@@ -124,25 +157,25 @@ class KnotAPIClient:
     
     def sync_customer_data(self, external_user_id, customer_name=None, customer_email=None):
         """
-        Sync customer order data from Knot to SusCart
+        Sync customer transaction data from Knot to SusCart
         
         Args:
-            external_user_id: Your customer's ID in your system
+            external_user_id: Your customer's ID (use 'abc' for test data from tunnel.tel)
             customer_name: Customer's name (optional)
             customer_email: Customer's email (optional)
             
         Returns:
             dict: Synchronized customer data ready for SusCart
         """
-        # Get orders from Knot (uses 'orders' not 'transactions')
-        orders = self.get_customer_transactions(external_user_id, limit=100)
+        # Get transactions from Knot
+        transactions = self.get_customer_transactions(external_user_id, limit=25)
         
-        if not orders:
-            print(f"⚠️  No orders found for user {external_user_id}")
+        if not transactions:
+            print(f"⚠️  No transactions found for user {external_user_id}")
             return None
         
-        # Analyze purchase patterns from orders
-        preferences = self._analyze_purchase_patterns(orders)
+        # Analyze purchase patterns from transactions
+        preferences = self._analyze_purchase_patterns(transactions)
         
         return {
             'external_user_id': external_user_id,
@@ -151,22 +184,22 @@ class KnotAPIClient:
             'email': customer_email,
             'phone': None,
             'preferences': preferences,
-            'orders': orders,
-            'order_count': len(orders)
+            'transactions': transactions,
+            'transaction_count': len(transactions)
         }
     
-    def _analyze_purchase_patterns(self, orders):
+    def _analyze_purchase_patterns(self, transactions):
         """
-        Analyze customer order history to determine preferences
-        Matches the real Knot API format with 'products' not 'skus'
+        Analyze customer transaction history to determine preferences
+        Works with real Knot API format from tunnel.tel
         
         Args:
-            orders: List of order data from Knot API (real format)
+            transactions: List of transaction data from Knot API
             
         Returns:
             dict: Customer preferences
         """
-        if not orders:
+        if not transactions:
             return {
                 'favorite_fruits': [],
                 'favorite_products': [],
@@ -182,7 +215,7 @@ class KnotAPIClient:
             'apple', 'banana', 'orange', 'grape', 'strawberry', 'blueberry',
             'mango', 'pear', 'watermelon', 'peach', 'plum', 'cherry', 'kiwi',
             'pineapple', 'cantaloupe', 'honeydew', 'lemon', 'lime', 'grapefruit',
-            'berry', 'fruit', 'produce', 'fresh', 'organic'
+            'berry', 'fruit', 'produce', 'fresh', 'organic', 'almond'
         ]
         
         fruit_counts = {}
@@ -190,9 +223,9 @@ class KnotAPIClient:
         total_spend = 0
         merchants = set()
         
-        for order in orders:
-            # Extract merchant from URL
-            url = order.get('url', '')
+        for transaction in transactions:
+            # Extract merchant from URL (uses snake_case: order_status, external_id, etc.)
+            url = transaction.get('url', '')
             if 'instacart' in url:
                 merchants.add('Instacart')
             elif 'walmart' in url:
@@ -208,47 +241,52 @@ class KnotAPIClient:
             elif 'ubereats' in url:
                 merchants.add('Ubereats')
             
-            # Get order total
-            price = order.get('price', {})
-            total = price.get('total', 0)
-            total_spend += abs(total)
+            # Get transaction total (string in API, convert to float)
+            price = transaction.get('price', {})
+            total_str = price.get('total', '0')
+            try:
+                total = float(total_str)
+                total_spend += abs(total)
+            except (ValueError, TypeError):
+                pass
             
-            # Analyze products (not skus!)
-            products = order.get('products', [])
+            # Analyze products
+            products = transaction.get('products', [])
             
             for product in products:
                 product_name = product.get('name', '').lower()
+                quantity = product.get('quantity', 1)
                 
                 # Track product
                 if product_name:
-                    product_counts[product_name] = product_counts.get(product_name, 0) + product.get('quantity', 1)
+                    product_counts[product_name] = product_counts.get(product_name, 0) + quantity
                 
-                # Check if it's a fruit
+                # Check if it's a fruit/produce
                 for keyword in fruit_keywords:
                     if keyword in product_name:
-                        fruit_counts[keyword] = fruit_counts.get(keyword, 0) + product.get('quantity', 1)
+                        fruit_counts[keyword] = fruit_counts.get(keyword, 0) + quantity
         
         # Get top 5 favorite fruits
         sorted_fruits = sorted(fruit_counts.items(), key=lambda x: x[1], reverse=True)
         favorite_fruits = [fruit for fruit, _ in sorted_fruits[:5]]
         
-        # Get top 5 products
+        # Get top 5 products overall
         sorted_products = sorted(product_counts.items(), key=lambda x: x[1], reverse=True)
         favorite_products = [product for product, _ in sorted_products[:5]]
         
         # Calculate averages
-        num_orders = len(orders)
-        average_spend = total_spend / num_orders if num_orders > 0 else 0
+        num_transactions = len(transactions)
+        average_spend = total_spend / num_transactions if num_transactions > 0 else 0
         
         return {
             'favorite_fruits': favorite_fruits,
             'favorite_products': favorite_products,
-            'purchase_frequency': num_orders / 90,  # orders per day (assume 90 day window)
+            'purchase_frequency': num_transactions / 90,  # transactions per day
             'average_spend': round(average_spend, 2),
             'preferred_discount': 20,  # Default to 20%
             'max_price': round(average_spend * 2, 2),  # willing to pay 2x average
             'merchants_used': list(merchants),
-            'total_orders': num_orders
+            'total_transactions': num_transactions
         }
     
     def webhook_handler(self, webhook_data):
@@ -521,21 +559,26 @@ class MockKnotAPIClient(KnotAPIClient):
 def get_knot_client():
     """
     Factory function to get appropriate Knot API client
-    Uses real client if credentials are configured, otherwise returns mock client
-    """
-    # Check if custom credentials are provided
-    client_id = os.getenv('KNOT_CLIENT_ID')
-    secret = os.getenv('KNOT_SECRET')
-    use_real = os.getenv('KNOT_USE_REAL', 'false').lower() == 'true'
     
-    # If KNOT_USE_REAL is explicitly set to true, use real API with provided/default credentials
+    Environment Variables:
+    - KNOT_USE_REAL: true/false - Use real API or mock
+    - KNOT_ENV: tunnel/dev/prod - Which Knot environment
+    - KNOT_FALLBACK_TO_TUNNEL: true/false - If dev/prod fails, use tunnel
+    - KNOT_CLIENT_ID: Your client ID (optional, has default)
+    - KNOT_SECRET: Your secret (optional, has default)
+    - KNOT_API_URL: Custom API URL (optional, overrides KNOT_ENV)
+    """
+    use_real = os.getenv('KNOT_USE_REAL', 'false').lower() == 'true'
+    knot_env = os.getenv('KNOT_ENV', 'tunnel')
+    
     if use_real:
         print("🔗 Using REAL Knot API client")
-        print(f"   Client ID: {client_id[:20] if client_id else 'dda0778d-9486-47f8'}...")
-        print(f"   Base URL: {os.getenv('KNOT_API_URL', 'https://development.knotapi.com')}")
-        return KnotAPIClient(client_id, secret)
+        print(f"   Environment: {knot_env.upper()}")
+        print(f"   Fallback: {'Enabled (will try tunnel if dev fails)' if os.getenv('KNOT_FALLBACK_TO_TUNNEL', 'true').lower() == 'true' else 'Disabled'}")
+        return KnotAPIClient()
     else:
         print("🔗 Using MOCK Knot API client")
         print("   Set KNOT_USE_REAL=true in .env to use real Knot API")
+        print("   Set KNOT_ENV=dev for development Knot API")
         return MockKnotAPIClient()
 

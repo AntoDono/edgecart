@@ -63,8 +63,8 @@ Create or edit `.env` file in project root:
 KNOT_USE_REAL=true
 
 # Credentials (provided by Knot - already set as defaults)
-KNOT_CLIENT_ID=dda0778d-9486-47f8-bd80-6f2512f9bcdb
-KNOT_SECRET=884d84e855054c32a8e39d08fcd9845d
+KNOT_CLIENT_ID=your_client_id_here
+KNOT_SECRET=your_secret_here
 
 # API endpoint (development environment)
 KNOT_API_URL=https://development.knotapi.com
@@ -77,7 +77,7 @@ python backend/main.py
 
 # Output:
 🔗 Using REAL Knot API client
-   Client ID: dda0778d-9486-47f8...
+   Client ID: your_client_id...
    Base URL: https://development.knotapi.com
 ```
 
@@ -115,7 +115,7 @@ Knot provides test merchant data you can use:
 # Using curl directly to Knot API
 curl -s -X POST https://knot.tunnel.tel/transactions/sync \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic ZGRhMDc3OGQtOTQ4Ni00N2Y4LWJkODAtNmYyNTEyZjliY2RiOjg4NGQ4NGU4NTUwNTRjMzJhOGUzOWQwOGZjZDk4NDVk" \
+  -H "Authorization: Basic your_base64_encoded_credentials" \
   --data '{"merchant_id":44,"external_user_id":"abc","limit":5}'
 ```
 
