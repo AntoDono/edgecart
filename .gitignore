@@ -7,3 +7,6 @@ fresh-*-classification.zip
 .env
 *.db
 .DS_Store
+/node_modules
+/frontend/node_modules
+node_modules

@@ -33,7 +33,6 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-<<<<<<< HEAD
   // Add/remove user-page class to enable scrolling on user page
   useEffect(() => {
     const isUserPage = currentPage === '#user';
@@ -44,12 +43,10 @@ function App() {
       root.classList.toggle('user-page', isUserPage);
     }
   }, [currentPage]);
-=======
   // Show mobile terminal on mobile
   if (isMobile) {
     return <MobileTerminal />;
   }
->>>>>>> ba5d670f00a6a879282b9711cf5b7779358eb666
 
   // Admin page
   if (currentPage === '#admin') {
@@ -72,18 +69,6 @@ function App() {
   // User page
   if (currentPage === '#user') {
     return (
-<<<<<<< HEAD
-      <div 
-        data-page="user"
-        style={{ 
-          width: '100vw', 
-          minHeight: '100vh', 
-          backgroundColor: '#000000',
-          overflowY: 'auto',
-          overflowX: 'hidden'
-        }}
-      >
-=======
       <div style={{
         width: '100vw',
         minHeight: '100vh',
@@ -92,7 +77,6 @@ function App() {
         overflowX: 'hidden',
         position: 'relative'
       }}>
->>>>>>> ba5d670f00a6a879282b9711cf5b7779358eb666
         <CustomerPortal />
       </div>
     );
