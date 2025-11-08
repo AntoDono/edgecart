@@ -10,6 +10,7 @@ import GradualBlur from './components/GradualBlur'
 import LogoLoop from './components/LogoLoop'
 import AdminLogin from './components/AdminLogin'
 import CustomerLogin from './components/CustomerLogin'
+import AdminDashboard from './components/AdminDashboard'
 import { RiAnthropicFill } from "react-icons/ri"
 
 function App() {
@@ -28,7 +29,7 @@ function App() {
   if (currentPage === '#admin') {
     return (
       <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000000' }}>
-        {/* Admin page content */}
+        <AdminDashboard />
       </div>
     );
   }

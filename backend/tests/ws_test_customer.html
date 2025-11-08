@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer WebSocket Test Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #fff;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .ws-section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        
+        .ws-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #11998e;
+            padding-bottom: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        button.connect {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        
+        button.disconnect {
+            background: linear-gradient(135deg, #f44336, #da190b);
+            color: white;
+        }
+        
+        button.send {
+            background: linear-gradient(135deg, #2196F3, #0b7dda);
+            color: white;
+        }
+        
+        button:disabled {
+            background: #e0e0e0;
+            cursor: not-allowed;
+            transform: none;
+            opacity: 0.6;
+        }
+        
+        input[type="number"] {
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 150px;
+        }
+        
+        .status {
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: inline-block;
+        }
+        
+        .status.connected {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        
+        .status.disconnected {
+            background: linear-gradient(135deg, #f44336, #da190b);
+            color: white;
+        }
+        
+        .messages {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            height: 500px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        
+        .message {
+            margin-bottom: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        
+        .message.received {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+        }
+        
+        .message.sent {
+            background: #f3e5f5;
+            border-left: 4px solid #9C27B0;
+        }
+        
+        .message.system {
+            background: #fff3cd;
+            color: #856404;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .message.notification {
+            background: linear-gradient(135deg, #d1ecf1, #bee5eb);
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+            font-weight: 600;
+        }
+        
+        .message .timestamp {
+            color: #666;
+            font-size: 11px;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .info-box {
+            background: linear-gradient(135deg, #e7f3ff, #cfe2ff);
+            border: 2px solid #b3d9ff;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #004085;
+        }
+        
+        .info-box strong {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+        
+        pre {
+            margin: 8px 0 0 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛒 Customer WebSocket Test Client</h1>
+        
+        <div class="ws-section">
+            <h2>Customer Notifications</h2>
+            
+            <div class="info-box">
+                <strong>ℹ️ Info:</strong>
+                Using fake customer ID: <strong id="fakeCustomerId">1</strong> (created when POPULATE=true)
+                <br>You can change the customer ID below to test with different customers.
+            </div>
+            
+            <div id="customerStatus" class="status disconnected">Disconnected</div>
+            <div class="controls">
+                <label for="customerIdInput" style="font-weight: 600;">Customer ID:</label>
+                <input type="number" id="customerIdInput" value="1" min="1" placeholder="Customer ID">
+                <button class="connect" onclick="connectCustomer()">Connect</button>
+                <button class="disconnect" onclick="disconnectCustomer()" disabled id="customerDisconnect">Disconnect</button>
+                <button class="send" onclick="viewRecommendation()" disabled id="viewRecBtn">View Recommendation</button>
+            </div>
+            <div class="controls">
+                <input type="number" id="recommendationIdInput" placeholder="Recommendation ID" disabled style="width: 200px;">
+            </div>
+            <div id="customerMessages" class="messages"></div>
+        </div>
+    </div>
+
+    <script>
+        let customerWs = null;
+        let currentCustomerId = 1;
+
+        // Auto-connect on page load
+        window.addEventListener('load', async () => {
+            await loadFakeCustomerId();
+            setTimeout(() => connectCustomer(), 500);
+        });
+
+        async function loadFakeCustomerId() {
+            try {
+                const response = await fetch('http://localhost:3000/api/customers');
+                if (response.ok) {
+                    const data = await response.json();
+                    const customers = data.customers || data; // Handle both formats
+                    const fakeCustomer = customers.find(c => c.knot_customer_id === 'FAKE-CUSTOMER-001');
+                    if (fakeCustomer) {
+                        document.getElementById('customerIdInput').value = fakeCustomer.id;
+                        document.getElementById('fakeCustomerId').textContent = fakeCustomer.id;
+                        currentCustomerId = fakeCustomer.id;
+                    }
+                }
+            } catch (e) {
+                console.log('Could not fetch customer list, using default ID 1');
+            }
+        }
+
+        function addMessage(containerId, message, type = 'received') {
+            const container = document.getElementById(containerId);
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            
+            let formattedMessage = message;
+            try {
+                const parsed = JSON.parse(message);
+                formattedMessage = JSON.stringify(parsed, null, 2);
+            } catch (e) {
+                // Not JSON, use as-is
+            }
+            
+            messageDiv.innerHTML = `<span class="timestamp">[${timestamp}]</span><pre>${formattedMessage}</pre>`;
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function connectCustomer() {
+            const customerId = parseInt(document.getElementById('customerIdInput').value) || 1;
+            currentCustomerId = customerId;
+            
+            if (customerWs && customerWs.readyState === WebSocket.OPEN) {
+                addMessage('customerMessages', 'Already connected. Disconnect first.', 'system');
+                return;
+            }
+            
+            const wsUrl = `ws://localhost:3000/ws/customer/${customerId}`;
+            customerWs = new WebSocket(wsUrl);
+            
+            customerWs.onopen = () => {
+                document.getElementById('customerStatus').className = 'status connected';
+                document.getElementById('customerStatus').textContent = `Connected (Customer ID: ${customerId})`;
+                document.getElementById('customerDisconnect').disabled = false;
+                document.getElementById('viewRecBtn').disabled = false;
+                document.getElementById('recommendationIdInput').disabled = false;
+                addMessage('customerMessages', `Connected to customer WebSocket (ID: ${customerId})`, 'system');
+            };
+            
+            customerWs.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'connected') {
+                        addMessage('customerMessages', `Welcome: ${data.message}`, 'system');
+                    } else if (data.type === 'new_recommendation') {
+                        addMessage('customerMessages', `🎯 NEW RECOMMENDATION:\n${JSON.stringify(data.data || data, null, 2)}`, 'notification');
+                    } else {
+                        addMessage('customerMessages', JSON.stringify(data, null, 2), 'received');
+                    }
+                } catch (e) {
+                    addMessage('customerMessages', event.data, 'received');
+                }
+            };
+            
+            customerWs.onclose = () => {
+                document.getElementById('customerStatus').className = 'status disconnected';
+                document.getElementById('customerStatus').textContent = 'Disconnected';
+                document.getElementById('customerDisconnect').disabled = true;
+                document.getElementById('viewRecBtn').disabled = true;
+                document.getElementById('recommendationIdInput').disabled = true;
+                addMessage('customerMessages', 'Disconnected from customer WebSocket', 'system');
+            };
+            
+            customerWs.onerror = (error) => {
+                addMessage('customerMessages', `Error: ${error}`, 'system');
+            };
+        }
+
+        function disconnectCustomer() {
+            if (customerWs) {
+                customerWs.close();
+                customerWs = null;
+            }
+        }
+
+        function viewRecommendation() {
+            const recId = parseInt(document.getElementById('recommendationIdInput').value);
+            if (!recId) {
+                addMessage('customerMessages', 'Please enter a recommendation ID', 'system');
+                return;
+            }
+            
+            if (customerWs && customerWs.readyState === WebSocket.OPEN) {
+                const message = {
+                    action: 'view_recommendation',
+                    recommendation_id: recId
+                };
+                customerWs.send(JSON.stringify(message));
+                addMessage('customerMessages', `Sent: ${JSON.stringify(message)}`, 'sent');
+            } else {
+                addMessage('customerMessages', 'Not connected to WebSocket', 'system');
+            }
+        }
+
+        document.getElementById('recommendationIdInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') viewRecommendation();
+        });
+        
+        window.addEventListener('beforeunload', () => {
+            disconnectCustomer();
+        });
+    </script>
+</body>
+</html>

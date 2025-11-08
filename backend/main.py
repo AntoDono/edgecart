@@ -48,6 +48,27 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Initialize database
 init_db(app)
 
+# Create fake customer if POPULATE env var is set
+if os.getenv('POPULATE', 'false').lower() == 'true':
+    with app.app_context():
+        # Check if fake customer already exists
+        fake_customer = Customer.query.filter_by(knot_customer_id='FAKE-CUSTOMER-001').first()
+        if not fake_customer:
+            fake_customer = Customer(
+                knot_customer_id='FAKE-CUSTOMER-001',
+                name='Fake Customer',
+                email='fake@example.com',
+                phone='(555) 000-0000'
+            )
+            fake_customer.set_preferences({
+                'favorite_fruits': ['apple', 'banana', 'orange'],
+                'max_price': 10.00,
+                'preferred_discount': 20
+            })
+            db.session.add(fake_customer)
+            db.session.commit()
+            print(f"✅ Created fake customer with ID: {fake_customer.id}")
+
 # Initialize Knot API client
 knot_client = get_knot_client()
 
@@ -121,7 +142,8 @@ def list_routes():
         'api_routes': sorted(routes, key=lambda x: x['path']),
         'websockets': [
             'ws://localhost:5000/ws/admin - Admin dashboard updates',
-            'ws://localhost:5000/ws/customer/<customer_id> - Customer notifications'
+            'ws://localhost:5000/ws/customer/<customer_id> - Customer notifications',
+            'ws://localhost:5000/ws/stream_video - Video stream'
         ]
     }), 200
 
@@ -411,6 +433,27 @@ def get_customer(customer_id):
         return jsonify(customer.to_dict()), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 404
+
+
+@app.route('/api/customers/<int:customer_id>/notify', methods=['POST'])
+def notify_customer_api(customer_id):
+    """API endpoint to send notification to a customer via WebSocket"""
+    try:
+        data = request.get_json()
+        event_type = data.get('event_type', 'custom_message')
+        notification_data = data.get('data', {})
+        
+        # Use the notify_customer function
+        notify_customer(customer_id, event_type, notification_data)
+        
+        return jsonify({
+            'message': f'Notification sent to customer {customer_id}',
+            'event_type': event_type,
+            'customer_id': customer_id
+        }), 200
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/customers', methods=['POST'])
@@ -842,8 +885,12 @@ def stream_video_websocket(ws):
             
             # FPS calculation variables
             frame_times = []
+            detection_delta = 0.125
+            min_confidence = 0.6
+            cached_detections = []
             window_size = 30
             last_time = time.time()
+            last_detection_time = 0  # Track when detection last ran
             
             while streaming:
                 try:
@@ -860,31 +907,46 @@ def stream_video_websocket(ws):
                         }))
                         break
                     
-                    # Run detection
-                    result = detect(frame, allowed_classes=['*'], save=False, verbose=False)
-                    detections = result['detections']
+                    # Check if we need to run detection (only if detection_delta seconds have passed)
+                    current_time = time.time()
+                    time_since_last_detection = current_time - last_detection_time
                     
-                    # Process each detection and add ripe scores
-                    processed_detections = []
-                    
-                    for detection in detections:
-                        bbox = detection['bbox']
-                        class_name = detection['class']
-                        confidence = detection['confidence']
+                    if time_since_last_detection >= detection_delta:
+                        # Run detection
+                        result = detect(frame, allowed_classes=['*'], save=False, verbose=False)
+                        detections = result['detections']
                         
-                        # Get ripe percentage if model is loaded
-                        ripe_score = None
-                        if ripe_model is not None:
-                            cropped = crop_bounding_box(frame, bbox)
-                            if cropped is not None:
-                                ripe_score = get_ripe_percentage(cropped, ripe_model, ripe_device, ripe_transform)
+                        # Process each detection and add ripe scores
+                        processed_detections = []
                         
-                        processed_detections.append({
-                            'bbox': bbox,  # [x1, y1, x2, y2]
-                            'class': class_name,
-                            'confidence': float(confidence),
-                            'ripe_score': float(ripe_score) if ripe_score is not None else None
-                        })
+                        for detection in detections:
+                            if detection['confidence'] < min_confidence:
+                                continue
+                            
+                            bbox = detection['bbox']
+                            class_name = detection['class']
+                            confidence = detection['confidence']
+                            
+                            # Get ripe percentage if model is loaded
+                            ripe_score = None
+                            if ripe_model is not None:
+                                cropped = crop_bounding_box(frame, bbox)
+                                if cropped is not None:
+                                    ripe_score = get_ripe_percentage(cropped, ripe_model, ripe_device, ripe_transform)
+                            
+                            processed_detections.append({
+                                'bbox': bbox,  # [x1, y1, x2, y2]
+                                'class': class_name,
+                                'confidence': float(confidence),
+                                'ripe_score': float(ripe_score) if ripe_score is not None else None
+                            })
+                        
+                        # Update cache and detection time
+                        cached_detections = processed_detections
+                        last_detection_time = current_time
+                    else:
+                        # Use cached detections
+                        processed_detections = cached_detections
                     
                     # Calculate FPS
                     current_time = time.time()

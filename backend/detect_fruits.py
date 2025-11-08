@@ -10,7 +10,7 @@ from torchvision import transforms
 from ripe_detector import load_model
 
 # Global YOLO model
-model = YOLO("yolov8n.pt") 
+model = YOLO("yolov8l.pt") 
 
 def detect(image, allowed_classes=['*'], save=True, verbose=True):
     """
