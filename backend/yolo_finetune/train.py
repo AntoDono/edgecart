@@ -5,7 +5,7 @@ model = YOLO("yolov8s.pt")
 
 # Train the model
 results = model.train(
-    data="data.yaml",
+    data="./dataset_fruits_detection/data.yaml",
     epochs=20,
     imgsz=640,
     batch=16,
