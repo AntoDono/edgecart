@@ -9,9 +9,9 @@ from pathlib import Path
 from tqdm import tqdm
 import os
 
-class RipeDetector(nn.Module):
+class FreshDetector(nn.Module):
     def __init__(self, dropout_rate=0.5, pretrained=True):
-        super(RipeDetector, self).__init__()
+        super(FreshDetector, self).__init__()
         # Use pretrained ResNet18 as backbone
         if pretrained:
             self.backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
@@ -41,8 +41,8 @@ class RipeDetector(nn.Module):
         output = self.classifier(features)
         return output
 
-class RipeDataset(Dataset):
-    """Custom dataset for ripe/fresh fruit classification"""
+class FreshDataset(Dataset):
+    """Custom dataset for fresh/rotten fruit classification"""
     def __init__(self, image_paths, labels, transform=None):
         self.image_paths = image_paths
         self.labels = labels
@@ -149,17 +149,17 @@ def load_data(path="./setup/data/dataset"):
     print(f"  Rotten: {len(test_labels) - sum(test_labels)} images")
     
     # Create datasets
-    train_dataset = RipeDataset(train_image_paths, train_labels, transform=train_transform)
-    test_dataset = RipeDataset(test_image_paths, test_labels, transform=test_transform)
+    train_dataset = FreshDataset(train_image_paths, train_labels, transform=train_transform)
+    test_dataset = FreshDataset(test_image_paths, test_labels, transform=test_transform)
     
     return train_dataset, test_dataset
 
-def train_model(model, train_dataset, test_dataset, epochs=4, batch_size=32, learning_rate=0.0001):
+def train_model(model, train_dataset, test_dataset, epochs=15, batch_size=32, learning_rate=0.0001):
     """
-    Train the RipeDetector model on the training dataset and evaluate on test dataset.
+    Train the FreshDetector model on the training dataset and evaluate on test dataset.
     
     Args:
-        model: The RipeDetector model to train
+        model: The FreshDetector model to train
         train_dataset: Training dataset
         test_dataset: Test dataset
         epochs: Number of training epochs
@@ -267,8 +267,8 @@ def train_model(model, train_dataset, test_dataset, epochs=4, batch_size=32, lea
     
     # Create model directory if it doesn't exist
     os.makedirs("./model", exist_ok=True)
-    torch.save(model.state_dict(), "./model/ripe_detector.pth")
-    print('Training completed! Model saved to ./model/ripe_detector.pth')
+    torch.save(model.state_dict(), "./model/fresh_detector.pth")
+    print('Training completed! Model saved to ./model/fresh_detector.pth')
     return model
 
 def load_model(path, device=None, pretrained=True):
@@ -282,9 +282,9 @@ def load_model(path, device=None, pretrained=True):
         pretrained: Whether to use pretrained ResNet weights (default: True)
     
     Returns:
-        RipeDetector: Loaded model
+        FreshDetector: Loaded model
     """
-    model = RipeDetector(pretrained=pretrained)
+    model = FreshDetector(pretrained=pretrained)
     
     # Determine device for loading
     if device is None:
@@ -306,7 +306,7 @@ def inference(model, image_path, device=None):
     Inference the model on a single image.
     
     Args:
-        model: The trained RipeDetector model
+        model: The trained FreshDetector model
         image_path: Path to the image file
         device: Device to run inference on (defaults to model's device)
     
@@ -335,16 +335,16 @@ def inference(model, image_path, device=None):
     return probability  # Returns value between 0 (rotten) and 1 (fresh)
 
 if __name__ == "__main__":
-    if os.path.exists("./model/ripe_detector.pth"):
+    if os.path.exists("./model/fresh_detector.pth"):
         print("Loading existing model...")
-        model = load_model("./model/ripe_detector.pth")
+        model = load_model("./model/fresh_detector.pth")
         print("Model loaded successfully!")
     else:
         print("No existing model found. Training new ResNet-based model...")
         train_dataset, test_dataset = load_data()
-        model = RipeDetector(pretrained=True)  # Use pretrained ResNet18
+        model = FreshDetector(pretrained=True)  # Use pretrained ResNet18
         print("Starting training with ResNet18 backbone...")
-        trained_model = train_model(model, train_dataset, test_dataset, epochs=4)
+        trained_model = train_model(model, train_dataset, test_dataset, epochs=15)
         model = trained_model
     
     # Inference
@@ -358,3 +358,4 @@ if __name__ == "__main__":
         print(f"Rotten apple probability: {probability2:.4f} ({'FRESH' if probability2 > 0.5 else 'ROTTEN'})")
     else:
         print("Test images not found. Skipping inference test.")
+
