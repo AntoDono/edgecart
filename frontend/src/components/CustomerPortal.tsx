@@ -1,5 +1,12 @@
-import { useState, useEffect, useRef, Component } from 'react';
+import { useState, useEffect, useRef, Component, useMemo } from 'react';
 import type { ReactNode } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { AwesomeButton } from 'react-awesome-button';
+import 'react-awesome-button/dist/styles.css';
+import { IoMdMan, IoMdWoman } from 'react-icons/io';
+import { GiStrawberry, GiOrange, GiGrapes } from 'react-icons/gi';
+import FaultyTerminal from './FaultyTerminal';
+import GradientText from './GradientText';
 import './CustomerPortal.css';
 import { config } from '../config';
 
@@ -161,8 +168,19 @@ const CustomerPortalContent = () => {
   const [showTransactionType, setShowTransactionType] = useState<'suscart' | 'knot'>('knot');
   const [merchants, setMerchants] = useState<any[]>([]);
   const [connectingMerchant, setConnectingMerchant] = useState<number | null>(null);
-  
+  const [welcomeStep, setWelcomeStep] = useState(0);
+
   const wsRef = useRef<WebSocket | null>(null);
+
+  // Welcome animation sequence
+  useEffect(() => {
+    if (!customerId || !customer) {
+      const timer1 = setTimeout(() => setWelcomeStep(1), 3500); // Show login after welcome fades
+      return () => {
+        clearTimeout(timer1);
+      };
+    }
+  }, [customerId, customer]);
 
   // Load customer from localStorage on mount
   useEffect(() => {
@@ -377,6 +395,41 @@ const CustomerPortalContent = () => {
     }
   };
 
+  const createFadeTransition = (onComplete: () => void) => {
+    // Create fade to black overlay
+    const fadeOverlay = document.createElement('div');
+    fadeOverlay.style.position = 'fixed';
+    fadeOverlay.style.top = '0';
+    fadeOverlay.style.left = '0';
+    fadeOverlay.style.width = '100vw';
+    fadeOverlay.style.height = '100vh';
+    fadeOverlay.style.backgroundColor = '#000000';
+    fadeOverlay.style.opacity = '0';
+    fadeOverlay.style.transition = 'opacity 1s ease-in-out';
+    fadeOverlay.style.zIndex = '9999';
+    fadeOverlay.style.pointerEvents = 'none';
+
+    document.body.appendChild(fadeOverlay);
+
+    // Trigger fade
+    setTimeout(() => {
+      fadeOverlay.style.opacity = '1';
+    }, 10);
+
+    // Execute callback and fade out
+    setTimeout(() => {
+      onComplete();
+      setTimeout(() => {
+        fadeOverlay.style.opacity = '0';
+        setTimeout(() => {
+          if (document.body.contains(fadeOverlay)) {
+            document.body.removeChild(fadeOverlay);
+          }
+        }, 1000);
+      }, 100);
+    }, 1000);
+  };
+
   // Real Knot authentication using Knot Link widget
   const connectMerchantAccount = async (merchantId: number) => {
     // First, ensure user is logged in
@@ -577,16 +630,19 @@ const CustomerPortalContent = () => {
       if (response.ok) {
         const data = await response.json();
         const newCustomerId = data.customer.id;
-        
-        // Save customer ID
-        setCustomerId(newCustomerId);
-        localStorage.setItem('suscart_customer_id', newCustomerId.toString());
-        
-        // Load customer data
-        await loadCustomerData(newCustomerId);
-        
-        // Connect WebSocket
-        connectWebSocket(newCustomerId);
+
+        // Create fade transition
+        createFadeTransition(() => {
+          // Save customer ID
+          setCustomerId(newCustomerId);
+          localStorage.setItem('suscart_customer_id', newCustomerId.toString());
+
+          // Load customer data
+          loadCustomerData(newCustomerId);
+
+          // Connect WebSocket
+          connectWebSocket(newCustomerId);
+        });
       } else {
         const error = await response.json();
         alert(`Error: ${error.error || 'Failed to sync from Knot'}`);
@@ -636,7 +692,11 @@ const CustomerPortalContent = () => {
     return labels[status] || status;
   };
 
-  // If not logged in, show sync interface
+  // Memoize FaultyTerminal props to prevent re-creation on re-renders
+  const terminalGridMul = useMemo(() => [1, 1] as [number, number], []);
+  const terminalGradientColors = useMemo(() => ['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C'], []);
+
+  // If not logged in, show welcome screen
   if (!customerId || !customer) {
     return (
       <div className="customer-portal login-view">
@@ -646,67 +706,33 @@ const CustomerPortalContent = () => {
           
           <div className="knot-sync-section">
             <h2>Connect Your Account</h2>
-            <p>Link your grocery purchase history by connecting your merchant accounts</p>
+            <p>Link your grocery purchase history via Knot API</p>
             
-            {/* Real Knot Authentication - Merchant Buttons */}
-            {merchants.length > 0 ? (
-              <div className="merchant-buttons">
-                <p className="hint">Select a store to connect:</p>
-                <div className="merchant-grid">
-                  {merchants.slice(0, 6).map((merchant: any) => (
-                    <button
-                      key={merchant.id}
-                      onClick={() => connectMerchantAccount(merchant.id)}
-                      disabled={connectingMerchant !== null}
-                      className={`merchant-btn ${connectingMerchant === merchant.id ? 'connecting' : ''}`}
-                    >
-                      {connectingMerchant === merchant.id ? (
-                        <>Connecting...</>
-                      ) : (
-                        <>
-                          <span className="merchant-name">{merchant.name}</span>
-                        </>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="merchant-buttons">
-                <p className="hint">Loading merchants...</p>
-              </div>
-            )}
-            
-            {/* Fallback: Test Mode (Tunnel) */}
-            <div className="or-divider-small">
-              <span>OR</span>
+            <div className="sync-form">
+              <input
+                type="text"
+                value={knotUserId}
+                onChange={(e) => setKnotUserId(e.target.value)}
+                placeholder="Enter Knot user ID (e.g., 'abc')"
+                className="knot-input"
+              />
+              <button 
+                onClick={syncFromKnot} 
+                disabled={syncLoading}
+                className="sync-button"
+              >
+                {syncLoading ? 'Syncing...' : 'Connect with Knot'}
+              </button>
             </div>
-            <div className="test-mode-section">
-              <p className="hint">Test Mode (for development):</p>
-              <div className="sync-form">
-                <input
-                  type="text"
-                  value={knotUserId}
-                  onChange={(e) => setKnotUserId(e.target.value)}
-                  placeholder="Enter Knot user ID (e.g., 'abc')"
-                  className="knot-input"
-                />
-                <button 
-                  onClick={syncFromKnot} 
-                  disabled={syncLoading}
-                  className="sync-button"
-                >
-                  {syncLoading ? 'Syncing...' : 'Sync Test Data'}
-                </button>
-              </div>
-              <div className="test-users">
-                <button onClick={() => setKnotUserId('abc')} className="test-user-btn">
-                  Use 'abc' (Test Data)
-                </button>
-                <button onClick={() => setKnotUserId('user123')} className="test-user-btn">
-                  Use 'user123' (Mock)
-                </button>
-              </div>
+            
+            <div className="test-users">
+              <p className="hint">Test Users:</p>
+              <button onClick={() => setKnotUserId('abc')} className="test-user-btn">
+                Use 'abc' (Test Data)
+              </button>
+              <button onClick={() => setKnotUserId('user123')} className="test-user-btn">
+                Use 'user123' (Mock)
+              </button>
             </div>
           </div>
 
