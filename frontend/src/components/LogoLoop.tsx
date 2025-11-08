@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, memo, CSSProperties, ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, memo, type CSSProperties, type ReactNode } from 'react';
 import './LogoLoop.css';
 
 const ANIMATION_CONFIG = {

@@ -1,10 +1,9 @@
 import { SparklingSphereR3F } from './components/SparklingSphereR3F'
-import { useThree, useFrame } from '@react-three/fiber'
+import { useFrame } from '@react-three/fiber'
 import { useRef } from 'react'
 import * as THREE from 'three'
 
 export default function Experience() {
-  const { camera } = useThree()
   const targetRotation = useRef(new THREE.Vector2(0, 0))
   const currentRotation = useRef(new THREE.Vector2(0, 0))
   const groupRef = useRef<THREE.Group>(null)

@@ -10,6 +10,9 @@ import GradualBlur from './components/GradualBlur'
 import LogoLoop from './components/LogoLoop'
 import AdminLogin from './components/AdminLogin'
 import CustomerLogin from './components/CustomerLogin'
+import BottomAscii from './components/BottomAscii'
+import TopHeader from './components/TopHeader'
+import FadeIn from './components/FadeIn'
 import AdminDashboard from './components/AdminDashboard'
 import { RiAnthropicFill } from "react-icons/ri"
 
@@ -46,6 +49,9 @@ function App() {
   // Landing page
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0, backgroundColor: '#000000' }}>
+      {/* Fade In Overlay - render first */}
+      <FadeIn />
+
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}>
         <Balatro
           isRotate={false}
@@ -202,6 +208,12 @@ function App() {
         zIndex={999}
       />
 
+      {/* Top Header */}
+      <TopHeader />
+
+      {/* Bottom ASCII Art */}
+      <BottomAscii />
+
       {/* Made With - Above Logo Loop */}
       <div style={{
         position: 'fixed',
@@ -247,7 +259,8 @@ function App() {
           gl={{
             antialias: true,
             toneMapping: 3, // ACESFilmicToneMapping
-            outputEncoding: 3, // sRGBEncoding
+            // @ts-expect-error - outputEncoding is deprecated but needed for bloom effect
+            outputEncoding: 3, // sRGBEncoding - needed for bloom effect
             alpha: true,
           }}
           dpr={[1, 2]}

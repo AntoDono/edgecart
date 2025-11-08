@@ -1,0 +1,49 @@
+.top-header-container {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+.mlh-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.mlh-logo img {
+  height: 40px;
+  width: auto;
+  filter: brightness(0) invert(1) sepia(10%) saturate(200%) hue-rotate(60deg) brightness(200%);
+}
+
+.header-icon {
+  color: #F5FFFA;
+  opacity: 1;
+  font-size: 1.5rem;
+  transition: opacity 0.3s ease, transform 0.2s ease;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-icon:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.header-icon-left {
+  /* Additional styles for left icon if needed */
+}
+
+.header-icon-right {
+  /* Additional styles for right icon if needed */
+}
