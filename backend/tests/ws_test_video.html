@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Stream Test Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #fff;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .video-section {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        
+        button.start {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        
+        button.stop {
+            background: linear-gradient(135deg, #f44336, #da190b);
+            color: white;
+        }
+        
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            opacity: 0.5;
+            transform: none;
+        }
+        
+        .status {
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        
+        .status.connected {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        
+        .status.disconnected {
+            background: linear-gradient(135deg, #f44336, #da190b);
+            color: white;
+        }
+        
+        .status.streaming {
+            background: linear-gradient(135deg, #2196F3, #0b7dda);
+            color: white;
+        }
+        
+        .video-container {
+            position: relative;
+            display: inline-block;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+        
+        #videoCanvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .info-panel {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .info-panel h3 {
+            margin-bottom: 15px;
+            color: #4CAF50;
+            font-size: 1.3em;
+        }
+        
+        .detection-item {
+            background: rgba(68, 68, 68, 0.8);
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .stat {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            padding: 15px 20px;
+            border-radius: 8px;
+            min-width: 150px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 Video Stream Test Client</h1>
+        
+        <div class="video-section">
+            <div>
+                <span id="status" class="status disconnected">Disconnected</span>
+                <span id="streamStatus" class="status disconnected">Not Streaming</span>
+            </div>
+            
+            <div class="controls">
+                <button class="start" onclick="connectWebSocket()">Connect</button>
+                <button class="stop" onclick="disconnectWebSocket()" disabled id="disconnectBtn">Disconnect</button>
+                <button class="start" onclick="startStream()" disabled id="startBtn">Start Stream</button>
+                <button class="stop" onclick="stopStream()" disabled id="stopBtn">Stop Stream</button>
+            </div>
+            
+            <div class="video-container">
+                <canvas id="videoCanvas"></canvas>
+            </div>
+            
+            <div class="info-panel">
+                <h3>Detection Results</h3>
+                <div id="detections"></div>
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-label">FPS</div>
+                        <div class="stat-value" id="fps">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Detections</div>
+                        <div class="stat-value" id="detectionCount">0</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Frames Received</div>
+                        <div class="stat-value" id="framesReceived">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let canvas = null;
+        let ctx = null;
+        let isStreaming = false;
+        let framesReceived = 0;
+        let pendingFrameMeta = null;
+        
+        // Initialize canvas
+        canvas = document.getElementById('videoCanvas');
+        ctx = canvas.getContext('2d');
+        
+        // Auto-connect and auto-start on page load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                connectWebSocket();
+            }, 500);
+        });
+        
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:3000/ws/stream_video');
+            ws.binaryType = 'arraybuffer';
+            
+            ws.onopen = () => {
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('disconnectBtn').disabled = false;
+                document.getElementById('startBtn').disabled = false;
+                
+                // Auto-start stream
+                setTimeout(() => {
+                    startStream();
+                }, 500);
+            };
+            
+            ws.onmessage = (event) => {
+                if (event.data instanceof ArrayBuffer) {
+                    handleBinaryFrame(event.data);
+                } else {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleTextMessage(data);
+                    } catch (e) {
+                        console.error('Failed to parse JSON:', e);
+                    }
+                }
+            };
+            
+            function handleTextMessage(data) {
+                if (data.type === 'connected') {
+                    console.log('Connected:', data.message);
+                    console.log('Ripe model loaded:', data.ripe_model_loaded);
+                } else if (data.type === 'started') {
+                    document.getElementById('streamStatus').className = 'status streaming';
+                    document.getElementById('streamStatus').textContent = 'Streaming';
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('stopBtn').disabled = false;
+                    console.log('Camera started:', data.message);
+                } else if (data.type === 'stopped') {
+                    document.getElementById('streamStatus').className = 'status disconnected';
+                    document.getElementById('streamStatus').textContent = 'Not Streaming';
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('stopBtn').disabled = true;
+                    isStreaming = false;
+                    console.log('Camera stopped:', data.message);
+                } else if (data.type === 'frame_meta') {
+                    pendingFrameMeta = data;
+                } else if (data.type === 'error') {
+                    console.error('Error:', data.message);
+                    alert('Error: ' + data.message);
+                }
+            }
+            
+            function handleBinaryFrame(arrayBuffer) {
+                const blob = new Blob([arrayBuffer], { type: 'image/jpeg' });
+                const imageUrl = URL.createObjectURL(blob);
+                
+                if (pendingFrameMeta) {
+                    displayFrame(imageUrl, pendingFrameMeta.detections, pendingFrameMeta.fps);
+                    updateDetectionCount(pendingFrameMeta.detections.length);
+                    
+                    if (pendingFrameMeta.fps !== undefined) {
+                        document.getElementById('fps').textContent = pendingFrameMeta.fps.toFixed(1);
+                    }
+                    
+                    pendingFrameMeta = null;
+                } else {
+                    displayFrame(imageUrl, [], 0);
+                }
+                
+                setTimeout(() => URL.revokeObjectURL(imageUrl), 100);
+                
+                framesReceived++;
+                document.getElementById('framesReceived').textContent = framesReceived;
+            }
+            
+            ws.onclose = () => {
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = 'Disconnected';
+                document.getElementById('disconnectBtn').disabled = true;
+                document.getElementById('startBtn').disabled = true;
+                stopStream();
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        function disconnectWebSocket() {
+            stopStream();
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function startStream() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Please connect to WebSocket first');
+                return;
+            }
+            
+            ws.send(JSON.stringify({ command: 'start' }));
+            isStreaming = true;
+        }
+        
+        function stopStream() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ command: 'stop' }));
+            }
+            
+            isStreaming = false;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('detections').innerHTML = '';
+            document.getElementById('detectionCount').textContent = '0';
+        }
+        
+        function displayFrame(imageUrl, detections, fps) {
+            const img = new Image();
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                
+                ctx.drawImage(img, 0, 0);
+                
+                if (fps !== undefined) {
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, 100, 30);
+                    ctx.fillStyle = '#4CAF50';
+                    ctx.font = 'bold 16px Arial';
+                    ctx.fillText(`FPS: ${fps.toFixed(1)}`, 5, 20);
+                }
+                
+                detections.forEach(detection => {
+                    const bbox = detection.bbox;
+                    const x1 = bbox[0];
+                    const y1 = bbox[1];
+                    const x2 = bbox[2];
+                    const y2 = bbox[3];
+                    
+                    ctx.strokeStyle = '#FFFFFF';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+                    
+                    let label = `${detection.class} (${(detection.confidence * 100).toFixed(1)}%)`;
+                    if (detection.ripe_score !== null && detection.ripe_score !== undefined) {
+                        label += ` | Ripe: ${detection.ripe_score.toFixed(1)}%`;
+                    }
+                    
+                    ctx.font = '14px Arial';
+                    const textMetrics = ctx.measureText(label);
+                    const textWidth = textMetrics.width;
+                    const textHeight = 20;
+                    
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(x1, y1 - textHeight - 4, textWidth + 8, textHeight);
+                    
+                    ctx.fillStyle = '#000';
+                    ctx.fillText(label, x1 + 4, y1 - 6);
+                });
+                
+                updateDetectionsList(detections);
+            };
+            img.src = imageUrl;
+        }
+        
+        function updateDetectionsList(detections) {
+            const detectionsDiv = document.getElementById('detections');
+            detectionsDiv.innerHTML = '';
+            
+            if (detections.length === 0) {
+                detectionsDiv.innerHTML = '<div class="detection-item">No detections</div>';
+                return;
+            }
+            
+            detections.forEach(detection => {
+                const detectionItem = document.createElement('div');
+                detectionItem.className = 'detection-item';
+                detectionItem.innerHTML = `
+                    <strong>${detection.class}</strong> | 
+                    Confidence: ${(detection.confidence * 100).toFixed(1)}% | 
+                    ${detection.ripe_score !== null && detection.ripe_score !== undefined 
+                        ? `Ripe Score: ${detection.ripe_score.toFixed(1)}%` 
+                        : 'Ripe Score: N/A'}
+                `;
+                detectionsDiv.appendChild(detectionItem);
+            });
+        }
+        
+        function updateDetectionCount(count) {
+            document.getElementById('detectionCount').textContent = count;
+        }
+        
+        window.addEventListener('beforeunload', () => {
+            stopStream();
+            disconnectWebSocket();
+        });
+    </script>
+</body>
+</html>

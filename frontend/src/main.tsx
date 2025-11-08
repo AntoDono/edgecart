@@ -13,6 +13,7 @@ import CustomerLogin from './components/CustomerLogin'
 import BottomAscii from './components/BottomAscii'
 import TopHeader from './components/TopHeader'
 import FadeIn from './components/FadeIn'
+import AdminDashboard from './components/AdminDashboard'
 import { RiAnthropicFill } from "react-icons/ri"
 
 function App() {
@@ -31,7 +32,7 @@ function App() {
   if (currentPage === '#admin') {
     return (
       <div style={{ width: '100vw', height: '100vh', backgroundColor: '#000000' }}>
-        {/* Admin page content */}
+        <AdminDashboard />
       </div>
     );
   }

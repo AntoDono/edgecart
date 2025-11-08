@@ -1,0 +1,478 @@
+.admin-dashboard {
+  width: 100vw;
+  height: 100vh;
+  background: #000000;
+  color: #ffffff;
+  font-family: 'Geist Mono', monospace;
+  padding: 1rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  flex: 0 0 auto;
+  padding: 0.5rem 0;
+}
+
+.top-stats {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.admin-dashboard-title {
+  font-family: 'Geist Mono', monospace;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: #7ECA9C;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.status-indicators {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.status-badge {
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: 'Geist Mono', monospace;
+}
+
+.status-badge.connected {
+  background: rgba(126, 202, 156, 0.2);
+  color: #7ECA9C;
+  border: 1px solid rgba(126, 202, 156, 0.3);
+}
+
+.status-badge.disconnected {
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.status-badge.streaming {
+  background: rgba(33, 150, 243, 0.2);
+  color: #2196F3;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.status-badge.idle {
+  background: rgba(170, 240, 209, 0.1);
+  color: #AAF0D1;
+  border: 1px solid rgba(170, 240, 209, 0.15);
+}
+
+.status-badge.model-loaded {
+  background: rgba(204, 255, 189, 0.2);
+  color: #CCFFBD;
+  border: 1px solid rgba(204, 255, 189, 0.3);
+}
+
+.connection-error {
+  background: rgba(244, 67, 54, 0.15);
+  border: 1px solid rgba(244, 67, 54, 0.3);
+  border-radius: 4px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.875rem;
+  color: #f44336;
+}
+
+.error-icon {
+  font-size: 1.2rem;
+}
+
+.error-message {
+  flex: 1;
+  color: #f44336;
+}
+
+.retry-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(244, 67, 54, 0.5);
+  border-radius: 4px;
+  background: rgba(244, 67, 54, 0.2);
+  color: #f44336;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.retry-btn:hover {
+  background: rgba(244, 67, 54, 0.3);
+  border-color: rgba(244, 67, 54, 0.7);
+}
+
+.controls-panel {
+  flex: 0 0 30%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.admin-dashboard-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.control-btn {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(170, 240, 209, 0.15);
+  border-radius: 4px;
+  background: #101111;
+  color: #CCFFBD;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.control-btn:hover:not(:disabled) {
+  background: #1a1f1a;
+  border-color: rgba(170, 240, 209, 0.3);
+  color: #CCFFBD;
+}
+
+.control-btn:active:not(:disabled) {
+  background: #0f1510;
+  border-color: rgba(126, 202, 156, 0.4);
+}
+
+.control-btn.connect-btn {
+  background: rgba(126, 202, 156, 0.1);
+  border-color: rgba(126, 202, 156, 0.3);
+  color: #7ECA9C;
+}
+
+.control-btn.connect-btn:hover:not(:disabled) {
+  background: rgba(126, 202, 156, 0.2);
+  border-color: rgba(126, 202, 156, 0.5);
+}
+
+.control-btn.disconnect-btn {
+  background: rgba(244, 67, 54, 0.1);
+  border-color: rgba(244, 67, 54, 0.3);
+  color: #f44336;
+}
+
+.control-btn.disconnect-btn:hover:not(:disabled) {
+  background: rgba(244, 67, 54, 0.2);
+  border-color: rgba(244, 67, 54, 0.5);
+}
+
+.control-btn.start-btn {
+  background: rgba(126, 202, 156, 0.1);
+  border-color: rgba(126, 202, 156, 0.3);
+  color: #7ECA9C;
+}
+
+.control-btn.start-btn:hover:not(:disabled) {
+  background: rgba(126, 202, 156, 0.2);
+  border-color: rgba(126, 202, 156, 0.5);
+}
+
+.control-btn.stop-btn {
+  background: rgba(244, 67, 54, 0.1);
+  border-color: rgba(244, 67, 54, 0.3);
+  color: #f44336;
+}
+
+.control-btn.stop-btn:hover:not(:disabled) {
+  background: rgba(244, 67, 54, 0.2);
+  border-color: rgba(244, 67, 54, 0.5);
+}
+
+.control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #1a1f1a;
+  border-color: rgba(170, 240, 209, 0.1);
+  color: rgba(170, 240, 209, 0.3);
+}
+
+.video-wrapper {
+  flex: 1;
+  display: flex;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.detection-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  pointer-events: none;
+}
+
+.detection-panel.left-panel {
+  left: 0;
+  align-items: flex-start;
+}
+
+.detection-panel.right-panel {
+  right: 0;
+  align-items: flex-end;
+}
+
+.video-container {
+  flex: 1;
+  background: #000000;
+  border-radius: 8px;
+  border: 1px solid rgba(170, 240, 209, 0.15);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-height: 0;
+  margin: 0 200px;
+}
+
+.video-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.arrow-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  overflow: visible;
+}
+
+.arrow-group {
+  filter: drop-shadow(0 0 2px rgba(126, 202, 156, 0.5));
+}
+
+.info-panel {
+  background: #101111;
+  border-radius: 8px;
+  border: 1px solid rgba(170, 240, 209, 0.15);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.info-panel-title {
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: #7ECA9C;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.detections-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.detections-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  align-content: start;
+}
+
+.detection-card {
+  width: 150px;
+  height: 150px;
+  background: #1a1f1a;
+  border-radius: 4px;
+  border: 2px solid rgba(126, 202, 156, 0.3);
+  overflow: hidden;
+  position: relative;
+  pointer-events: auto;
+  box-shadow: 0 0 10px rgba(126, 202, 156, 0.2);
+  transition: all 0.3s ease;
+}
+
+.detection-card:hover {
+  border-color: rgba(126, 202, 156, 0.6);
+  box-shadow: 0 0 20px rgba(126, 202, 156, 0.4);
+  transform: scale(1.05);
+}
+
+.detection-image-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #000000;
+}
+
+.detection-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.detection-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
+  padding: 0.5rem;
+  font-size: 0.65rem;
+  color: #CCFFBD;
+  font-family: 'Geist Mono', monospace;
+}
+
+.detection-label {
+  font-weight: bold;
+  color: #7ECA9C;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.2rem;
+}
+
+.detection-confidence {
+  color: #AAF0D1;
+  font-size: 0.6rem;
+}
+
+.detection-ripe {
+  color: #CCFFBD;
+  font-size: 0.6rem;
+  margin-top: 0.2rem;
+}
+
+.stat-card {
+  background: rgba(26, 31, 26, 0.8);
+  border: 1px solid rgba(126, 202, 156, 0.3);
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 15px rgba(126, 202, 156, 0.1);
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: rgba(170, 240, 209, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: 'Geist Mono', monospace;
+  margin: 0;
+}
+
+.stat-value {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #7ECA9C;
+  font-family: 'Geist Mono', monospace;
+  margin: 0;
+}
+
+/* Scrollbar styling for detection panels */
+.detection-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.detection-panel::-webkit-scrollbar-track {
+  background: rgba(15, 21, 16, 0.5);
+  border-radius: 3px;
+}
+
+.detection-panel::-webkit-scrollbar-thumb {
+  background: rgba(126, 202, 156, 0.3);
+  border-radius: 3px;
+}
+
+.detection-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(126, 202, 156, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .admin-dashboard {
+    padding: 1rem;
+  }
+
+  .admin-dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-content {
+    flex-direction: column;
+  }
+
+  .video-section {
+    flex: 0 0 60%;
+  }
+
+  .controls-panel {
+    flex: 0 0 40%;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+

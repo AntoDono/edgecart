@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard WebSocket Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #fff;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .dashboard-section {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+        }
+        
+        .dashboard-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        button.connect {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        
+        button.disconnect {
+            background: linear-gradient(135deg, #f44336, #da190b);
+            color: white;
+        }
+        
+        button.action {
+            background: linear-gradient(135deg, #2196F3, #0b7dda);
+            color: white;
+        }
+        
+        button.broadcast {
+            background: linear-gradient(135deg, #FF9800, #F57C00);
+            color: white;
+        }
+        
+        button:disabled {
+            background: #e0e0e0;
+            cursor: not-allowed;
+            transform: none;
+            opacity: 0.6;
+        }
+        
+        .status {
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+        
+        .status.connected {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        
+        .status.disconnected {
+            background: linear-gradient(135deg, #f44336, #da190b);
+            color: white;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        
+        .events-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .events-section {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .events-panel {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            height: 500px;
+            overflow-y: auto;
+        }
+        
+        .events-panel h3 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 1.2em;
+        }
+        
+        .event-item {
+            background: white;
+            border-left: 4px solid #2196F3;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+        }
+        
+        .event-item:hover {
+            transform: translateX(5px);
+        }
+        
+        .event-item.inventory_added { border-left-color: #4CAF50; }
+        .event-item.inventory_updated { border-left-color: #2196F3; }
+        .event-item.inventory_deleted { border-left-color: #f44336; }
+        .event-item.freshness_updated { border-left-color: #FF9800; }
+        .event-item.freshness_alert { border-left-color: #f44336; background: #ffebee; }
+        .event-item.stats { border-left-color: #9C27B0; }
+        .event-item.connected { border-left-color: #4CAF50; }
+        
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .event-type {
+            font-weight: bold;
+            color: #333;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        
+        .event-timestamp {
+            color: #999;
+            font-size: 11px;
+        }
+        
+        .event-data {
+            color: #666;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 8px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            background: #f5f5f5;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        
+        .broadcast-section {
+            background: linear-gradient(135deg, #fff3cd, #ffe082);
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .broadcast-section h3 {
+            color: #856404;
+            margin-bottom: 15px;
+        }
+        
+        .customer-select {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+        }
+        
+        .customer-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .customer-option input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        
+        .customer-option label {
+            cursor: pointer;
+            font-size: 13px;
+            color: #333;
+        }
+        
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 10px;
+            font-family: inherit;
+        }
+        
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        select {
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛒 Admin Dashboard WebSocket Test</h1>
+        
+        <div class="dashboard-section">
+            <h2>Connection</h2>
+            <div>
+                <span id="status" class="status disconnected">Disconnected</span>
+            </div>
+            <div class="controls">
+                <button class="connect" onclick="connectWebSocket()">Connect</button>
+                <button class="disconnect" onclick="disconnectWebSocket()" disabled id="disconnectBtn">Disconnect</button>
+                <button class="action" onclick="requestStats()" disabled id="statsBtn">Request Stats</button>
+            </div>
+        </div>
+        
+        <div class="dashboard-section">
+            <h2>Broadcast to Customers</h2>
+            <div class="broadcast-section">
+                <h3>Send Notification</h3>
+                <div>
+                    <label>Select Customers:</label>
+                    <div class="customer-select" id="customerSelect">
+                        <div>Loading customers...</div>
+                    </div>
+                    <button class="broadcast" onclick="selectAllCustomers()">Select All</button>
+                    <button class="broadcast" onclick="deselectAllCustomers()">Deselect All</button>
+                </div>
+                <div style="margin-top: 15px;">
+                    <label>Event Type:</label>
+                    <select id="eventType">
+                        <option value="new_recommendation">New Recommendation</option>
+                        <option value="custom_message">Custom Message</option>
+                        <option value="promotion">Promotion</option>
+                        <option value="alert">Alert</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Message/Data (JSON):</label>
+                    <textarea id="broadcastData" placeholder='{"message": "Hello!", "title": "Special Offer"}'></textarea>
+                </div>
+                <button class="broadcast" onclick="broadcastToCustomers()" disabled id="broadcastBtn">Broadcast</button>
+            </div>
+        </div>
+        
+        <div class="dashboard-section">
+            <h2>Live Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Inventory Items</div>
+                    <div class="stat-value" id="inventoryCount">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Critical Items</div>
+                    <div class="stat-value" id="criticalCount">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Events</div>
+                    <div class="stat-value" id="totalEvents">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Alerts</div>
+                    <div class="stat-value" id="alertCount">0</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="dashboard-section">
+            <h2>Real-Time Events</h2>
+            <div class="events-section">
+                <div>
+                    <div class="events-panel">
+                        <h3>All Events</h3>
+                        <div id="allEvents"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="events-panel">
+                        <h3>Recent Alerts</h3>
+                        <div id="alerts"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let eventCount = 0;
+        let alertCount = 0;
+        let customers = [];
+        
+        // Auto-connect on page load
+        window.addEventListener('load', () => {
+            loadCustomers();
+            setTimeout(() => connectWebSocket(), 500);
+        });
+        
+        async function loadCustomers() {
+            try {
+                const response = await fetch('http://localhost:3000/api/customers');
+                if (response.ok) {
+                    const data = await response.json();
+                    customers = data.customers || data; // Handle both formats
+                    renderCustomerSelect();
+                }
+            } catch (e) {
+                console.error('Failed to load customers:', e);
+                document.getElementById('customerSelect').innerHTML = '<div>Error loading customers</div>';
+            }
+        }
+        
+        function renderCustomerSelect() {
+            const container = document.getElementById('customerSelect');
+            container.innerHTML = '';
+            customers.forEach(customer => {
+                const div = document.createElement('div');
+                div.className = 'customer-option';
+                div.innerHTML = `
+                    <input type="checkbox" id="customer_${customer.id}" value="${customer.id}">
+                    <label for="customer_${customer.id}">${customer.name || `Customer ${customer.id}`} (ID: ${customer.id})</label>
+                `;
+                container.appendChild(div);
+            });
+        }
+        
+        function selectAllCustomers() {
+            customers.forEach(customer => {
+                document.getElementById(`customer_${customer.id}`).checked = true;
+            });
+        }
+        
+        function deselectAllCustomers() {
+            customers.forEach(customer => {
+                document.getElementById(`customer_${customer.id}`).checked = false;
+            });
+        }
+        
+        async function broadcastToCustomers() {
+            const selectedCustomers = Array.from(document.querySelectorAll('#customerSelect input[type="checkbox"]:checked'))
+                .map(cb => parseInt(cb.value));
+            
+            if (selectedCustomers.length === 0) {
+                alert('Please select at least one customer');
+                return;
+            }
+            
+            const eventType = document.getElementById('eventType').value;
+            let data = {};
+            
+            try {
+                const dataText = document.getElementById('broadcastData').value.trim();
+                if (dataText) {
+                    data = JSON.parse(dataText);
+                }
+            } catch (e) {
+                alert('Invalid JSON in message field');
+                return;
+            }
+            
+            // Send notification to each selected customer
+            for (const customerId of selectedCustomers) {
+                try {
+                    const response = await fetch(`http://localhost:3000/api/customers/${customerId}/notify`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            event_type: eventType,
+                            data: data
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        addEvent('allEvents', `Broadcast sent to customer ${customerId}`, 'broadcast', { customer_id: customerId, event_type: eventType, data });
+                    } else {
+                        addEvent('allEvents', `Failed to send to customer ${customerId}`, 'error', { error: await response.text() });
+                    }
+                } catch (e) {
+                    addEvent('allEvents', `Error broadcasting to customer ${customerId}: ${e.message}`, 'error', {});
+                }
+            }
+            
+            alert(`Notification sent to ${selectedCustomers.length} customer(s)`);
+        }
+        
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:3000/ws/admin');
+            
+            ws.onopen = () => {
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('disconnectBtn').disabled = false;
+                document.getElementById('statsBtn').disabled = false;
+                document.getElementById('broadcastBtn').disabled = false;
+                addEvent('allEvents', 'Connected to admin dashboard', 'connected', {});
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (e) {
+                    console.error('Failed to parse message:', e);
+                    addEvent('allEvents', 'Invalid JSON received', 'error', { raw: event.data });
+                }
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = 'Disconnected';
+                document.getElementById('disconnectBtn').disabled = true;
+                document.getElementById('statsBtn').disabled = true;
+                document.getElementById('broadcastBtn').disabled = true;
+                addEvent('allEvents', 'Disconnected from admin dashboard', 'disconnected', {});
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                addEvent('allEvents', 'WebSocket error occurred', 'error', { error: error.toString() });
+            };
+        }
+        
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function requestStats() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'get_stats' }));
+                addEvent('allEvents', 'Stats requested', 'stats_request', {});
+            }
+        }
+        
+        function handleMessage(data) {
+            const eventType = data.type;
+            const eventData = data.data || {};
+            
+            eventCount++;
+            document.getElementById('totalEvents').textContent = eventCount;
+            
+            switch (eventType) {
+                case 'connected':
+                    addEvent('allEvents', data.message || 'Connected', 'connected', data);
+                    break;
+                    
+                case 'stats':
+                    if (eventData.inventory_count !== undefined) {
+                        document.getElementById('inventoryCount').textContent = eventData.inventory_count;
+                    }
+                    if (eventData.critical_count !== undefined) {
+                        document.getElementById('criticalCount').textContent = eventData.critical_count;
+                    }
+                    addEvent('allEvents', 'Stats received', 'stats', eventData);
+                    break;
+                    
+                case 'inventory_added':
+                    addEvent('allEvents', `Inventory added: ${eventData.fruit_type || 'Unknown'}`, 'inventory_added', eventData);
+                    break;
+                    
+                case 'inventory_updated':
+                    addEvent('allEvents', `Inventory updated: ${eventData.fruit_type || 'Unknown'}`, 'inventory_updated', eventData);
+                    break;
+                    
+                case 'inventory_deleted':
+                    addEvent('allEvents', `Inventory deleted: ID ${eventData.id || 'Unknown'}`, 'inventory_deleted', eventData);
+                    break;
+                    
+                case 'freshness_updated':
+                    const freshnessMsg = eventData.freshness 
+                        ? `Freshness updated: Score ${eventData.freshness.freshness_score || 'N/A'}%`
+                        : 'Freshness updated';
+                    addEvent('allEvents', freshnessMsg, 'freshness_updated', eventData);
+                    break;
+                    
+                case 'freshness_alert':
+                    alertCount++;
+                    document.getElementById('alertCount').textContent = alertCount;
+                    addEvent('allEvents', data.message || 'Freshness alert!', 'freshness_alert', eventData);
+                    addAlert(data.message || 'Freshness alert!', eventData);
+                    break;
+                    
+                default:
+                    addEvent('allEvents', `Event: ${eventType}`, eventType, eventData);
+            }
+        }
+        
+        function addEvent(containerId, message, eventType, data) {
+            const container = document.getElementById(containerId);
+            const eventDiv = document.createElement('div');
+            eventDiv.className = `event-item ${eventType}`;
+            
+            const timestamp = data.timestamp || new Date().toISOString();
+            const timeStr = new Date(timestamp).toLocaleTimeString();
+            
+            eventDiv.innerHTML = `
+                <div class="event-header">
+                    <span class="event-type">${eventType}</span>
+                    <span class="event-timestamp">${timeStr}</span>
+                </div>
+                <div>${message}</div>
+                ${Object.keys(data).length > 0 ? `<div class="event-data">${JSON.stringify(data, null, 2)}</div>` : ''}
+            `;
+            
+            container.insertBefore(eventDiv, container.firstChild);
+            
+            while (container.children.length > 100) {
+                container.removeChild(container.lastChild);
+            }
+        }
+        
+        function addAlert(message, data) {
+            const container = document.getElementById('alerts');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'event-item freshness_alert';
+            
+            const timestamp = data.timestamp || new Date().toISOString();
+            const timeStr = new Date(timestamp).toLocaleTimeString();
+            
+            alertDiv.innerHTML = `
+                <div class="event-header">
+                    <span class="event-type">🚨 Alert</span>
+                    <span class="event-timestamp">${timeStr}</span>
+                </div>
+                <div><strong>${message}</strong></div>
+                ${data.inventory_id ? `<div class="event-data">Inventory ID: ${data.inventory_id}</div>` : ''}
+            `;
+            
+            container.insertBefore(alertDiv, container.firstChild);
+            
+            while (container.children.length > 20) {
+                container.removeChild(container.lastChild);
+            }
+        }
+        
+        window.addEventListener('beforeunload', () => {
+            disconnectWebSocket();
+        });
+    </script>
+</body>
+</html>
