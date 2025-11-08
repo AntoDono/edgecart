@@ -64,7 +64,7 @@ createRoot(document.getElementById('root')!).render(
         justifyContent: 'center',
       }}>
         <p style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '1rem', color: '#ffffff', textTransform: 'lowercase', margin: 0, opacity: 0.7 }}>
-          elevator pitch
+          finding alpha in grocery arbitrage
         </p>
       </div>
 
