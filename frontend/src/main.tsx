@@ -5,7 +5,8 @@ import Experience from './Experience'
 import { Canvas } from '@react-three/fiber'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import Balatro from './components/Balatro'
-import SimpleGlass from './components/SimpleGlass'
+import FaultyTerminal from './components/FaultyTerminal'
+import GradualBlur from './components/GradualBlur'
 import LogoLoop from './components/LogoLoop'
 import AdminLogin from './components/AdminLogin'
 import { RiAnthropicFill } from "react-icons/ri"
@@ -34,8 +35,8 @@ createRoot(document.getElementById('root')!).render(
       <div style={{
         position: 'fixed',
         top: 'calc(50% - 325px)',
-        left: 'calc(4rem + 450px)',
-        right: 'calc(4rem + 450px)',
+        left: '550px',
+        right: '550px',
         zIndex: 3,
       }}>
         <LogoLoop
@@ -58,8 +59,8 @@ createRoot(document.getElementById('root')!).render(
       <div style={{
         position: 'fixed',
         top: 'calc(50% - 325px + 50px)',
-        left: 'calc(4rem + 450px)',
-        right: 'calc(4rem + 450px)',
+        left: '550px',
+        right: '550px',
         zIndex: 3,
         display: 'flex',
         justifyContent: 'center',
@@ -69,40 +70,114 @@ createRoot(document.getElementById('root')!).render(
         </p>
       </div>
 
-      {/* Glass Surface - Left Side */}
+      {/* Dither Container - Left Side (Admin) */}
       <div style={{
         position: 'fixed',
-        left: '4rem',
+        left: 0,
         top: '50%',
         transform: 'translateY(-50%)',
         zIndex: 2,
+        width: '550px',
+        height: '100vh',
+        overflow: 'hidden',
+        maskImage: 'linear-gradient(to left, transparent 0%, black 25%, black 100%)',
+        WebkitMaskImage: 'linear-gradient(to left, transparent 0%, black 25%, black 100%)',
       }}>
-        <SimpleGlass width={450} height={650} borderRadius={0}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+          <FaultyTerminal
+            scale={2.3}
+            gridMul={[1, 1]}
+            digitSize={1.8}
+            timeScale={1.8}
+            pause={false}
+            scanlineIntensity={0.7}
+            glitchAmount={1}
+            flickerAmount={1}
+            noiseAmp={1}
+            chromaticAberration={0}
+            dither={0}
+            curvature={0.2}
+            tint="#7ECA9C"
+            mouseReact={false}
+            mouseStrength={0}
+            pageLoadAnimation={true}
+            brightness={0.6}
+          />
+        </div>
+        <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: '420px', height: '650px', zIndex: 1, left: '3rem' }}>
           <AdminLogin />
-        </SimpleGlass>
+        </div>
       </div>
 
-      {/* Glass Surface - Right Side */}
+      {/* Dither Container - Right Side (Customer) */}
       <div style={{
         position: 'fixed',
-        right: '4rem',
+        right: 0,
         top: '50%',
         transform: 'translateY(-50%)',
         zIndex: 2,
+        width: '550px',
+        height: '100vh',
+        overflow: 'hidden',
+        maskImage: 'linear-gradient(to right, transparent 0%, black 25%, black 100%)',
+        WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 25%, black 100%)',
       }}>
-        <SimpleGlass width={450} height={650} borderRadius={0}>
+        <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+          <FaultyTerminal
+            scale={2.3}
+            gridMul={[1, 1]}
+            digitSize={1.8}
+            timeScale={1.8}
+            pause={false}
+            scanlineIntensity={0.7}
+            glitchAmount={1}
+            flickerAmount={1}
+            noiseAmp={1}
+            chromaticAberration={0}
+            dither={0}
+            curvature={0.2}
+            tint="#7ECA9C"
+            mouseReact={false}
+            mouseStrength={0}
+            pageLoadAnimation={true}
+            brightness={0.6}
+          />
+        </div>
+        <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', width: '420px', height: '650px', zIndex: 1, right: '3rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <h2 style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, fontSize: '2rem', color: '#ffffff', textTransform: 'lowercase' }}>
-            suscart
+            customer
           </h2>
-        </SimpleGlass>
+        </div>
       </div>
+
+      {/* Page-level blur overlays - flat across entire page */}
+      <GradualBlur
+        target="page"
+        position="top"
+        height="80px"
+        strength={5}
+        curve="ease-out"
+        divCount={8}
+        opacity={0.6}
+        zIndex={999}
+      />
+      <GradualBlur
+        target="page"
+        position="bottom"
+        height="80px"
+        strength={5}
+        curve="ease-out"
+        divCount={8}
+        opacity={0.6}
+        zIndex={999}
+      />
 
       {/* Made With - Above Logo Loop */}
       <div style={{
         position: 'fixed',
         bottom: 'calc(50% - 325px + 50px)',
-        left: 'calc(4rem + 450px)',
-        right: 'calc(4rem + 450px)',
+        left: '550px',
+        right: '550px',
         zIndex: 3,
         display: 'flex',
         justifyContent: 'center',
@@ -116,8 +191,8 @@ createRoot(document.getElementById('root')!).render(
       <div style={{
         position: 'fixed',
         bottom: 'calc(50% - 325px)',
-        left: 'calc(4rem + 450px)',
-        right: 'calc(4rem + 450px)',
+        left: '550px',
+        right: '550px',
         zIndex: 3,
       }}>
         <LogoLoop

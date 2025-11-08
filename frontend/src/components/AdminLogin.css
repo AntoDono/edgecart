@@ -9,7 +9,7 @@
 
 .admin-title {
   margin: 0 0 4px 0;
-  text-align: center;
+  text-align: left;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -22,6 +22,7 @@
   border-radius: 0 !important;
   backdrop-filter: none !important;
   background: transparent !important;
+  margin: 0 !important;
 }
 
 /* Camera Feed */
