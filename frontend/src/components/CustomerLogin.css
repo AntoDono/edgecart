@@ -259,6 +259,11 @@
   letter-spacing: 0.2em !important;
 }
 
+/* Mobile terminal branding - hidden on desktop */
+.mobile-terminal-branding {
+  display: none;
+}
+
 /* Mobile Styles */
 @media (max-width: 768px) {
   .customer-title {
@@ -272,20 +277,60 @@
     width: 100% !important;
     height: 100% !important;
     box-sizing: border-box !important;
-    background: #000000 !important;
+    background: transparent !important;
   }
 
-  /* Make camera feed much smaller */
+  /* Hide camera feed on mobile */
   .customer-login .camera-feed {
-    flex: 0 0 80px !important;
-    width: 100% !important;
+    display: none !important;
   }
 
-  /* Make terminal much smaller */
+  /* Show mobile branding inside terminal */
+  .mobile-terminal-branding {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    padding: 1rem 1rem 0.5rem 1rem !important;
+    background: #101111 !important;
+    border-radius: 8px 8px 0 0 !important;
+    border: 1px solid rgba(170, 240, 209, 0.15) !important;
+    border-bottom: none !important;
+  }
+
+  .mobile-terminal-logo {
+    height: 32px !important;
+    filter: brightness(0) invert(1) !important;
+  }
+
+  .mobile-terminal-subtitle {
+    font-family: "Geist Mono", monospace !important;
+    font-weight: 100 !important;
+    font-size: 0.75rem !important;
+    color: #ffffff !important;
+    text-transform: lowercase !important;
+    margin: 0 !important;
+    opacity: 0.7 !important;
+  }
+
+  .customer-login .terminal-header {
+    flex-direction: row !important;
+    justify-content: flex-start !important;
+    border-radius: 0 !important;
+  }
+
+  .customer-login .terminal-title {
+    text-align: left !important;
+    flex: 1 !important;
+  }
+
+  /* Make terminal taller */
   .customer-login .terminal {
-    min-height: 100px !important;
-    max-height: 180px !important;
+    min-height: 240px !important;
+    max-height: 300px !important;
     flex: 0 1 auto !important;
+    border-radius: 0 0 8px 8px !important;
+    border-top: none !important;
   }
 
   .customer-login .terminal-body {
