@@ -5,6 +5,7 @@ import Experience from './Experience'
 import { Canvas } from '@react-three/fiber'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import Balatro from './components/Balatro'
+import LoginPanel from './components/LoginPanel'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -25,36 +26,29 @@ createRoot(document.getElementById('root')!).render(
           spinEase={1.0}
         />
       </div>
+
+      {/* Admin Panel - Left Side */}
       <div style={{
         position: 'fixed',
+        left: '4rem',
         top: '50%',
-        left: '8%',
         transform: 'translateY(-50%)',
-        fontSize: '8rem',
-        fontWeight: 100,
-        color: '#FFFFFF',
         zIndex: 2,
-        fontFamily: '"Geist", sans-serif',
-        letterSpacing: '-0.02em',
-        textShadow: '0 0 40px rgba(255, 255, 255, 0.3)',
       }}>
-        EDGE
+        <LoginPanel title="admin console" />
       </div>
+
+      {/* User Panel - Right Side */}
       <div style={{
         position: 'fixed',
+        right: '4rem',
         top: '50%',
-        right: '8%',
         transform: 'translateY(-50%)',
-        fontSize: '8rem',
-        fontWeight: 100,
-        color: '#FFFFFF',
         zIndex: 2,
-        fontFamily: '"Geist", sans-serif',
-        letterSpacing: '-0.02em',
-        textShadow: '0 0 40px rgba(255, 255, 255, 0.3)',
       }}>
-        CART
+        <LoginPanel title="user login" />
       </div>
+
       <Canvas
         style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}
         gl={{
