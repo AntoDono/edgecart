@@ -242,12 +242,32 @@ def train_model(model, train_dataset, test_dataset, epochs=8, batch_size=64, lea
     print('Training completed! Model saved to ./model/ripe_detector.pth')
     return model
 
-def load_model(path):
+def load_model(path, device=None):
     """
     Load the model from the path.
+    Handles loading models saved on CUDA when running on CPU.
+    
+    Args:
+        path: Path to the model file
+        device: Target device (None for auto-detect, 'cpu', 'cuda', or torch.device)
+    
+    Returns:
+        RipeDetector: Loaded model
     """
     model = RipeDetector()
-    model.load_state_dict(torch.load(path))
+    
+    # Determine device for loading
+    if device is None:
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        else:
+            device = torch.device('cpu')
+    elif isinstance(device, str):
+        device = torch.device(device)
+    
+    # Map the loaded model to the target device
+    # This handles cases where model was saved on CUDA but loading on CPU
+    model.load_state_dict(torch.load(path, map_location=device))
     return model
 
 def inference(model, image_path, device=None):
