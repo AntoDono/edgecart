@@ -246,6 +246,8 @@ function App() {
           gl={{
             antialias: true,
             toneMapping: 3, // ACESFilmicToneMapping
+            // @ts-expect-error - outputEncoding is deprecated but needed for bloom effect
+            outputEncoding: 3, // sRGBEncoding - needed for bloom effect
             alpha: true,
           }}
           dpr={[1, 2]}

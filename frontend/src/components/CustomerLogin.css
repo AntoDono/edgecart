@@ -100,10 +100,76 @@
 .customer-login .terminal-body {
   flex: 1;
   padding: 1rem;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  gap: 0;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.customer-login .terminal-body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.customer-login .fastfetch-container {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  flex-shrink: 0;
+  margin-bottom: 0.75rem;
+}
+
+.customer-login .ascii-art {
+  color: #7ECA9C;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  margin: 0;
+  font-family: 'Geist Mono', monospace;
+  white-space: pre;
+  flex-shrink: 0;
+}
+
+.customer-login .system-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  flex: 1;
+}
+
+.customer-login .info-line {
+  display: flex;
+  gap: 0.5rem;
+  color: #CCFFBD;
+  line-height: 1.2;
+}
+
+.customer-login .info-line.highlight {
+  color: #7ECA9C;
+  font-weight: 600;
+  margin-bottom: 0.1rem;
+}
+
+.customer-login .info-line.separator {
+  color: #AAF0D1;
+  opacity: 0.3;
+  margin-bottom: 0.2rem;
+}
+
+.customer-login .info-label {
+  color: #7ECA9C;
+  min-width: 70px;
+}
+
+.customer-login .info-line.highlight .info-label,
+.customer-login .info-line.separator .info-label {
+  min-width: auto;
+}
+
+.customer-login .info-value {
+  color: #CCFFBD;
 }
 
 .customer-login .terminal-line {

@@ -98,10 +98,76 @@
 .terminal-body {
   flex: 1;
   padding: 1rem;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  gap: 0;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.terminal-body::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.fastfetch-container {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  flex-shrink: 0;
+  margin-bottom: 0.75rem;
+}
+
+.ascii-art {
+  color: #7ECA9C;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  margin: 0;
+  font-family: 'Geist Mono', monospace;
+  white-space: pre;
+  flex-shrink: 0;
+}
+
+.system-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  flex: 1;
+}
+
+.info-line {
+  display: flex;
+  gap: 0.5rem;
+  color: #CCFFBD;
+  line-height: 1.2;
+}
+
+.info-line.highlight {
+  color: #7ECA9C;
+  font-weight: 600;
+  margin-bottom: 0.1rem;
+}
+
+.info-line.separator {
+  color: #AAF0D1;
+  opacity: 0.3;
+  margin-bottom: 0.2rem;
+}
+
+.info-label {
+  color: #7ECA9C;
+  min-width: 70px;
+}
+
+.info-line.highlight .info-label,
+.info-line.separator .info-label {
+  min-width: auto;
+}
+
+.info-value {
+  color: #CCFFBD;
 }
 
 .terminal-line {

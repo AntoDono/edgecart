@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AwesomeButton } from 'react-awesome-button';
 import 'react-awesome-button/dist/styles.css';
 import GradientText from './GradientText';
@@ -11,11 +11,38 @@ interface TerminalLine {
 
 const Terminal = () => {
   const [lines, setLines] = useState<TerminalLine[]>([]);
+  const [showFastfetch, setShowFastfetch] = useState(true);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   const generateTimestamp = () => {
     const now = new Date();
     return now.toLocaleTimeString('en-US', { hour12: false });
   };
+
+  const asciiArt = `....................
+.....+++++++*+*+:...
+:*##-:+********:....
+...+##==*****+-##=:.
+...:*##==***==##*-..
+....=###+-*=+###+...
+.....####+:=*++=:...
+.....-#++++++++-....
+.......::.:::::.....
+......-#*:..=**.....
+....................`;
+
+  const systemInfo = [
+    { label: 'customer@edgecart', value: '', highlight: true },
+    { label: '------------------', value: '', separator: true },
+    { label: 'Version', value: 'v2.3.0-stable' },
+    { label: 'Session', value: 'Guest Mode' },
+    { label: 'Offers', value: '12 deals' },
+    { label: 'Savings', value: '$23.50/week' },
+    { label: 'Stores', value: '3 nearby' },
+    { label: 'Rewards', value: '450 points' },
+    { label: 'Alerts', value: 'Active' },
+    { label: 'Status', value: 'Ready' },
+  ];
 
   const terminalMessages = [
     'Connecting to edgecart customer portal...',
@@ -46,33 +73,45 @@ const Terminal = () => {
 
       setLines(prev => {
         const updated = [...prev, newLine];
-        return updated.slice(-8); // Keep only last 8 lines
+        return updated.slice(-15); // Keep more lines visible
       });
 
       messageIndex++;
     };
 
-    // Add initial lines quickly
-    const initialInterval = setInterval(() => {
-      if (messageIndex < 5) {
-        addLine();
-      } else {
-        clearInterval(initialInterval);
-      }
-    }, 800);
+    // Wait 3 seconds before first message
+    const startTimeout = setTimeout(() => {
+      // Add initial lines quickly
+      const initialInterval = setInterval(() => {
+        if (messageIndex < 3) {
+          addLine();
+        } else {
+          clearInterval(initialInterval);
+        }
+      }, 800);
 
-    // Then add lines every 2-4 seconds
-    const mainInterval = setInterval(() => {
-      if (messageIndex >= 5) {
-        addLine();
-      }
-    }, 2000 + Math.random() * 2000);
+      // Then add lines every 2-4 seconds
+      const mainInterval = setInterval(() => {
+        if (messageIndex >= 3) {
+          addLine();
+        }
+      }, 2000 + Math.random() * 2000);
+
+      return () => {
+        clearInterval(initialInterval);
+        clearInterval(mainInterval);
+      };
+    }, 3000);
 
     return () => {
-      clearInterval(initialInterval);
-      clearInterval(mainInterval);
+      clearTimeout(startTimeout);
     };
   }, []);
+
+  useEffect(() => {
+    // Auto-scroll to bottom on new message
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [lines]);
 
   return (
     <div className="terminal">
@@ -82,9 +121,22 @@ const Terminal = () => {
           <span className="terminal-button minimize"></span>
           <span className="terminal-button maximize"></span>
         </div>
-        <div className="terminal-title">edgecart-customer-portal</div>
+        <div className="terminal-title">customer@edgecart</div>
       </div>
       <div className="terminal-body">
+        {showFastfetch && (
+          <div className="fastfetch-container">
+            <pre className="ascii-art">{asciiArt}</pre>
+            <div className="system-info">
+              {systemInfo.map((info, index) => (
+                <div key={index} className={`info-line ${info.highlight ? 'highlight' : ''} ${info.separator ? 'separator' : ''}`}>
+                  {info.label && <span className="info-label">{info.label}</span>}
+                  {info.value && <span className="info-value">{info.value}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {lines.map((line, index) => (
           <div key={index} className="terminal-line">
             <span className="terminal-timestamp">[{line.timestamp}]</span>
@@ -92,6 +144,7 @@ const Terminal = () => {
           </div>
         ))}
         <div className="terminal-cursor">▊</div>
+        <div ref={bottomRef} />
       </div>
     </div>
   );
