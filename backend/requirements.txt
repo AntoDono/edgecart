@@ -11,3 +11,4 @@ xai-sdk==1.4.0
 google-generativeai
 Pillow
 numpy
+google-genai==1.49.0

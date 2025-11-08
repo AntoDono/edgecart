@@ -36,6 +36,9 @@ from detect_fruits import (
     get_freshness_score,
     get_best_camera_index
 )
+from utils.image_storage import save_detection_image, get_category_images, get_all_categories, DETECTION_IMAGES_DIR, replace_category_images, delete_category_images
+from blemish_detection.blemish import detect_blemishes
+import threading
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -152,7 +155,7 @@ def update_freshness_from_camera(inventory_id, freshness_score, confidence):
                     db.session.commit()
                     
                     # Broadcast update with source indicator
-                    inventory = FruitInventory.query.get(inventory_id)
+                    inventory = db.session.get(FruitInventory, inventory_id)
                     if inventory:
                         broadcast_to_admins('freshness_updated', {
                             'inventory_id': inventory_id,
@@ -213,7 +216,7 @@ def update_freshness():
         freshness.update_status()
         
         # Update inventory price if discount changed
-        inventory = FruitInventory.query.get(inventory_id)
+        inventory = db.session.get(FruitInventory, inventory_id)
         if inventory and freshness.discount_percentage != old_discount:
             inventory.current_price = round(
                 inventory.original_price * (1 - freshness.discount_percentage / 100),
@@ -284,6 +287,83 @@ def get_critical_items():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ============ Detection Images API ============
+
+@app.route('/api/detection-images/<category>', methods=['GET'])
+def get_detection_images(category):
+    """Get all detection images for a category and run blemish detection"""
+    try:
+        images = get_category_images(category.lower())
+        
+        # Run blemish detection on each image
+        images_with_blemishes = []
+        for image_info in images:
+            image_path = DETECTION_IMAGES_DIR / category.lower() / image_info['filename']
+            
+            # Check if blemish detection already exists in metadata
+            if not (image_info.get('metadata') and 'blemishes' in image_info['metadata']):
+                # Run blemish detection
+                try:
+                    blemish_result = detect_blemishes(str(image_path))
+                    
+                    # Update metadata with blemish results
+                    if not image_info.get('metadata'):
+                        image_info['metadata'] = {}
+                    
+                    image_info['metadata']['blemishes'] = {
+                        'bboxes': blemish_result['bboxes'],
+                        'labels': blemish_result['labels'],
+                        'count': len(blemish_result['bboxes'])
+                    }
+                    
+                    # Save updated metadata
+                    metadata_path = image_path.with_suffix('.json')
+                    with open(metadata_path, 'w') as f:
+                        json.dump(image_info['metadata'], f, indent=2, default=str)
+                    
+                except Exception as e:
+                    print(f"Error running blemish detection on {image_path}: {e}")
+                    # Continue without blemish data if detection fails
+                    if not image_info.get('metadata'):
+                        image_info['metadata'] = {}
+                    image_info['metadata']['blemishes'] = {
+                        'error': str(e),
+                        'count': 0
+                    }
+            
+            images_with_blemishes.append(image_info)
+        
+        return jsonify({
+            'category': category,
+            'count': len(images_with_blemishes),
+            'images': images_with_blemishes
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/detection-images', methods=['GET'])
+def get_all_detection_categories():
+    """Get all categories that have detection images"""
+    try:
+        categories = get_all_categories()
+        return jsonify({
+            'count': len(categories),
+            'categories': categories
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/detection_images/<path:filename>')
+def serve_detection_image(filename):
+    """Serve detection images"""
+    try:
+        return send_from_directory('detection_images', filename)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 404
 
 
 # ============ Customer Management API ============
@@ -730,7 +810,7 @@ def customer_websocket(ws, customer_id):
                     if action_data.get('action') == 'view_recommendation':
                         rec_id = action_data.get('recommendation_id')
                         with app.app_context():
-                            rec = Recommendation.query.get(rec_id)
+                            rec = db.session.get(Recommendation, rec_id)
                             if rec:
                                 rec.viewed = True
                                 db.session.commit()
@@ -793,6 +873,7 @@ def stream_video_websocket(ws):
             # FPS calculation variables
             frame_times = []
             detection_delta = 0.125
+            update_delta = 1.0
             min_confidence = 0.6
             cached_detections = []
             window_size = 30
@@ -836,6 +917,7 @@ def stream_video_websocket(ws):
                             
                             # Get freshness score if model is loaded
                             freshness_score = None
+                            cropped = None
                             if fresh_model is not None:
                                 cropped = crop_bounding_box(frame, bbox)
                                 if cropped is not None:
@@ -854,16 +936,36 @@ def stream_video_websocket(ws):
                                 else:
                                     print(f"⚠️ Could not crop bounding box for {class_name}")
                             else:
-                                if not hasattr(stream_video_websocket, '_fresh_model_warning_shown'):
+                                # Still crop for image storage even if fresh model not loaded
+                                cropped = crop_bounding_box(frame, bbox)
+                                global _fresh_model_warning_shown
+                                if not _fresh_model_warning_shown:
                                     print(f"⚠️ Fresh model not loaded - freshness scores will be None")
-                                    stream_video_websocket._fresh_model_warning_shown = True
+                                    _fresh_model_warning_shown = True
                             
-                            processed_detections.append({
-                                'bbox': bbox,  # [x1, y1, x2, y2]
-                                'class': class_name,
-                                'confidence': float(confidence),
-                                'freshness_score': float(freshness_score) if freshness_score is not None else None
-                            })
+                            # Store cropped image and metadata for later (when counter changes)
+                            if cropped is not None:
+                                metadata = {
+                                    'confidence': float(confidence),
+                                    'freshness_score': float(freshness_score) if freshness_score is not None else None,
+                                    'timestamp': datetime.utcnow().isoformat(),
+                                    'bbox': bbox
+                                }
+                                processed_detections.append({
+                                    'bbox': bbox,  # [x1, y1, x2, y2]
+                                    'class': class_name,
+                                    'confidence': float(confidence),
+                                    'freshness_score': float(freshness_score) if freshness_score is not None else None,
+                                    'cropped_image': cropped,  # Store cropped image for later
+                                    'metadata': metadata
+                                })
+                            else:
+                                processed_detections.append({
+                                    'bbox': bbox,  # [x1, y1, x2, y2]
+                                    'class': class_name,
+                                    'confidence': float(confidence),
+                                    'freshness_score': float(freshness_score) if freshness_score is not None else None
+                                })
                         
                         # Update cache and detection time
                         cached_detections = processed_detections
@@ -903,6 +1005,21 @@ def stream_video_websocket(ws):
                         for fruit_type, current_count in current_class_counts.items():
                             previous_count = previous_class_counts.get(fruit_type, 0)
                             if current_count != previous_count:
+                                # Count changed - store images for this class type
+                                # Collect all images for this fruit type from current detections
+                                fruit_images = []
+                                for det in processed_detections:
+                                    if det.get('class') == fruit_type and 'cropped_image' in det:
+                                        fruit_images.append((det['cropped_image'], det.get('metadata', {})))
+                                
+                                # Replace folder with new images (asynchronously to not block video stream)
+                                if fruit_images:
+                                    threading.Thread(
+                                        target=replace_category_images,
+                                        args=(fruit_images, fruit_type),
+                                        daemon=True
+                                    ).start()
+                                
                                 # Count changed - prepare update
                                 if fruit_type in inventory_cache:
                                     item_id, old_quantity = inventory_cache[fruit_type]
@@ -929,6 +1046,13 @@ def stream_video_websocket(ws):
                         # Handle fruits that were previously detected but are no longer detected (count = 0)
                         for fruit_type, previous_count in previous_class_counts.items():
                             if fruit_type not in current_class_counts and previous_count > 0:
+                                # Fruit no longer detected - clear images folder
+                                threading.Thread(
+                                    target=delete_category_images,
+                                    args=(fruit_type,),
+                                    daemon=True
+                                ).start()
+                                
                                 # Fruit no longer detected - set quantity to 0
                                 if fruit_type in inventory_cache:
                                     item_id, old_quantity = inventory_cache[fruit_type]
@@ -965,7 +1089,7 @@ def stream_video_websocket(ws):
                             with app.app_context():
                                 for update in updates_to_process:
                                     if update['type'] == 'update':
-                                        db_item = FruitInventory.query.get(update['item_id'])
+                                        db_item = db.session.get(FruitInventory, update['item_id'])
                                         if db_item:
                                             db_item.quantity = update['new_quantity']
                                             db_item.updated_at = datetime.utcnow()
@@ -1034,10 +1158,21 @@ def stream_video_websocket(ws):
                     _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                     frame_bytes = buffer.tobytes()
                     
+                    # Create clean detections for JSON serialization (remove numpy arrays)
+                    clean_detections = []
+                    for det in processed_detections:
+                        clean_det = {
+                            'bbox': det['bbox'],
+                            'class': det['class'],
+                            'confidence': det['confidence'],
+                            'freshness_score': det.get('freshness_score')
+                        }
+                        clean_detections.append(clean_det)
+                    
                     # Send metadata first (detections, fps, frame size)
                     ws.send(json.dumps({
                         'type': 'frame_meta',
-                        'detections': processed_detections,
+                        'detections': clean_detections,
                         'fps': round(fps, 2),
                         'frame_size': len(frame_bytes),
                         'timestamp': datetime.utcnow().isoformat()
