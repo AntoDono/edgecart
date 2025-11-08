@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AwesomeButton } from 'react-awesome-button';
 import 'react-awesome-button/dist/styles.css';
-import { IoMdMan, IoMdWoman } from 'react-icons/io';
+import { IoMdMan, IoMdWoman, IoMdPerson } from 'react-icons/io';
 import { GiStrawberry, GiOrange, GiGrapes } from 'react-icons/gi';
 import FaultyTerminal from './FaultyTerminal';
 import GradientText from './GradientText';
@@ -31,9 +31,9 @@ class ErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ 
-          padding: '2rem', 
-          color: '#ef4444', 
+        <div style={{
+          padding: '2rem',
+          color: '#fe8019',
           background: '#1a0a0a',
           minHeight: '100vh'
         }}>
@@ -158,7 +158,7 @@ const CustomerPortalContent = () => {
   const [syncLoading, setSyncLoading] = useState(false);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [knotTransactions, setKnotTransactions] = useState<KnotTransaction[]>([]);
-  const [showTransactionType, setShowTransactionType] = useState<'suscart' | 'knot'>('knot');
+  const [showTransactionType, setShowTransactionType] = useState<'edgecart' | 'knot'>('knot');
   const [welcomeStep, setWelcomeStep] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -175,7 +175,7 @@ const CustomerPortalContent = () => {
 
   // Load customer from localStorage on mount
   useEffect(() => {
-    const savedCustomerId = localStorage.getItem('suscart_customer_id');
+    const savedCustomerId = localStorage.getItem('edgecart_customer_id');
     if (savedCustomerId) {
       const id = parseInt(savedCustomerId);
       setCustomerId(id);
@@ -250,7 +250,7 @@ const CustomerPortalContent = () => {
         setRecommendations([]);
       }
 
-      // Fetch SusCart purchase history
+      // Fetch EdgeCart purchase history
       const purchasesResponse = await fetch(`${config.apiUrl}/api/customers/${id}/purchases`);
       if (purchasesResponse.ok) {
         const purchasesData = await purchasesResponse.json();
@@ -431,7 +431,7 @@ const CustomerPortalContent = () => {
         createFadeTransition(() => {
           // Save customer ID
           setCustomerId(newCustomerId);
-          localStorage.setItem('suscart_customer_id', newCustomerId.toString());
+          localStorage.setItem('edgecart_customer_id', newCustomerId.toString());
 
           // Load customer data
           loadCustomerData(newCustomerId);
@@ -456,7 +456,7 @@ const CustomerPortalContent = () => {
     setCustomer(null);
     setRecommendations([]);
     setNotifications([]);
-    localStorage.removeItem('suscart_customer_id');
+    localStorage.removeItem('edgecart_customer_id');
     if (wsRef.current) {
       wsRef.current.close();
     }
@@ -475,7 +475,7 @@ const CustomerPortalContent = () => {
   const getFreshnessColor = (score: number) => {
     if (score >= 70) return '#4ade80'; // green
     if (score >= 40) return '#fbbf24'; // yellow
-    return '#ef4444'; // red
+    return '#fe8019'; // orange
   };
 
   const getFreshnessLabel = (status: string) => {
@@ -726,7 +726,7 @@ const CustomerPortalContent = () => {
       {/* Header */}
       <header className="portal-header">
         <div className="header-content">
-          <h1>edgecart</h1>
+          <img src="/edgecart.png" alt="edgecart" style={{ height: '40px', filter: 'brightness(0) invert(1)' }} />
           <div className="header-actions">
             <div className="connection-status">
               <span className={`status-dot ${isConnected ? 'connected' : 'disconnected'}`}></span>
@@ -742,22 +742,43 @@ const CustomerPortalContent = () => {
         {/* Customer Info Section */}
         <section className="customer-info-section">
           <div className="info-card">
-            <h2>Your Profile</h2>
+            <h2>
+              <GradientText
+                colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
+                animationSpeed={4}
+                showBorder={false}
+              >
+                YOUR PROFILE
+              </GradientText>
+            </h2>
             <div className="customer-details">
-              <p><strong>Name:</strong> {customer.name}</p>
-              <p><strong>Email:</strong> {customer.email}</p>
-              {customer.knot_customer_id && (
-                <p className="knot-badge">
-                  Connected via Knot API
-                </p>
-              )}
+              <div className="customer-info-left">
+                <p><strong>Name:</strong> {customer.name}</p>
+                <p><strong>Email:</strong> {customer.email}</p>
+                {customer.knot_customer_id && (
+                  <p className="knot-badge">
+                    Connected via Knot API
+                  </p>
+                )}
+              </div>
+              <div className="customer-icon-right">
+                <IoMdPerson />
+              </div>
             </div>
           </div>
 
           {/* Preferences from Knot */}
           {customer.preferences && (
             <div className="info-card preferences-card">
-              <h2>Your Shopping Profile</h2>
+              <h2>
+                <GradientText
+                  colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
+                  animationSpeed={4}
+                  showBorder={false}
+                >
+                  YOUR SHOPPING
+                </GradientText>
+              </h2>
               
               {customer.preferences.favorite_fruits && customer.preferences.favorite_fruits.length > 0 && (
                 <div className="preference-section">
@@ -802,7 +823,15 @@ const CustomerPortalContent = () => {
 
         {/* Recommendations Section */}
         <section className="recommendations-section">
-          <h2>Personalized Deals for You</h2>
+          <h2>
+            <GradientText
+              colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
+              animationSpeed={4}
+              showBorder={false}
+            >
+              PERSONALIZED DEALS FOR YOU
+            </GradientText>
+          </h2>
           
           {recommendations.length === 0 ? (
             <div className="empty-state">
@@ -881,7 +910,15 @@ const CustomerPortalContent = () => {
         {/* Live Notifications */}
         {notifications.length > 0 && (
           <section className="notifications-section">
-            <h2>Live Updates</h2>
+            <h2>
+              <GradientText
+                colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
+                animationSpeed={4}
+                showBorder={false}
+              >
+                LIVE UPDATES
+              </GradientText>
+            </h2>
             <div className="notifications-list">
               {notifications.map((notif, idx) => (
                 <div key={idx} className="notification-item">
@@ -901,7 +938,15 @@ const CustomerPortalContent = () => {
         {/* Transaction History */}
         <section className="transactions-section">
           <div className="section-header">
-            <h2>Transaction History</h2>
+            <h2>
+              <GradientText
+                colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
+                animationSpeed={4}
+                showBorder={false}
+              >
+                TRANSACTION HISTORY
+              </GradientText>
+            </h2>
             <div className="transaction-toggle">
               <button 
                 className={`toggle-btn ${showTransactionType === 'knot' ? 'active' : ''}`}
@@ -909,11 +954,11 @@ const CustomerPortalContent = () => {
               >
                 Knot Purchases ({knotTransactions.length})
               </button>
-              <button 
-                className={`toggle-btn ${showTransactionType === 'suscart' ? 'active' : ''}`}
-                onClick={() => setShowTransactionType('suscart')}
+              <button
+                className={`toggle-btn ${showTransactionType === 'edgecart' ? 'active' : ''}`}
+                onClick={() => setShowTransactionType('edgecart')}
               >
-                SusCart Purchases ({purchases.length})
+                EdgeCart Purchases ({purchases.length})
               </button>
             </div>
           </div>
@@ -985,18 +1030,18 @@ const CustomerPortalContent = () => {
             </div>
           )}
 
-          {/* SusCart Purchases */}
-          {showTransactionType === 'suscart' && (
+          {/* EdgeCart Purchases */}
+          {showTransactionType === 'edgecart' && (
             <div className="transactions-list">
               {purchases.length === 0 ? (
                 <div className="empty-state">
-                  <p>No SusCart purchases yet</p>
+                  <p>No EdgeCart purchases yet</p>
                   <p className="hint">Your purchases from our store will appear here</p>
                 </div>
               ) : (
                 <div className="scrollable-transactions">
                   {purchases.map((purchase) => (
-                    <div key={purchase.id} className="transaction-card suscart-transaction">
+                    <div key={purchase.id} className="transaction-card edgecart-transaction">
                       <div className="transaction-header">
                         <div className="transaction-info">
                           <div>
@@ -1030,8 +1075,8 @@ const CustomerPortalContent = () => {
                         </div>
                       </div>
 
-                      <div className="suscart-badge">
-                        SusCart Purchase
+                      <div className="edgecart-badge">
+                        EdgeCart Purchase
                       </div>
                     </div>
                   ))}
@@ -1043,7 +1088,15 @@ const CustomerPortalContent = () => {
 
         {/* Savings Summary */}
         <section className="savings-section">
-          <h2>💰 Your Savings</h2>
+          <h2>
+            <GradientText
+              colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
+              animationSpeed={4}
+              showBorder={false}
+            >
+              YOUR SAVINGS
+            </GradientText>
+          </h2>
           <div className="savings-grid">
             <div className="saving-card">
               <div className="saving-value">
@@ -1079,7 +1132,15 @@ const CustomerPortalContent = () => {
 
         {/* How It Works */}
         <section className="how-it-works">
-          <h2>How SusCart Helps You Save</h2>
+          <h2>
+            <GradientText
+              colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
+              animationSpeed={4}
+              showBorder={false}
+            >
+              HOW EDGECART HELPS YOU SAVE
+            </GradientText>
+          </h2>
           <div className="steps-grid">
             <div className="step">
               <h3>1. Connect Accounts</h3>

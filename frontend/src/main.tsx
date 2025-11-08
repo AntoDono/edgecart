@@ -37,11 +37,6 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  // Show mobile terminal on mobile
-  if (isMobile) {
-    return <MobileTerminal />;
-  }
-
   // Admin page
   if (currentPage === '#admin') {
     return (
