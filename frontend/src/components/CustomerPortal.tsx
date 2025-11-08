@@ -407,26 +407,66 @@ const CustomerPortalContent = () => {
         })
       });
 
-      if (!sessionRes.ok) {
-        const error = await sessionRes.json();
-        throw new Error(error.message || 'Failed to create session');
-      }
-
       const sessionData = await sessionRes.json();
       
       // Check if tunnel mode (no real authentication)
       if (sessionData.environment === 'tunnel' || !sessionData.clientId) {
-        alert('Real authentication requires dev/prod environment. Please use test mode below or configure KNOT_CLIENT_ID and KNOT_ENV in your .env file.');
+        let message = 'Real authentication requires dev/prod environment.\n\n';
+        if (!sessionData.clientId) {
+          message += 'KNOT_CLIENT_ID is not set in your .env file.\n';
+        }
+        if (sessionData.environment === 'tunnel') {
+          message += 'KNOT_ENV is set to "tunnel". Please set it to "dev" or "prod".\n';
+        }
+        message += '\nMake sure to:\n1. Set KNOT_ENV=dev (or prod)\n2. Set KNOT_CLIENT_ID=your_client_id\n3. Restart your backend server';
+        alert(message);
         setConnectingMerchant(null);
         return;
       }
       
-      const sessionId = sessionData.session?.session_id || sessionData.session_id;
+      // If session creation failed, show error but still try to help
+      if (!sessionRes.ok || sessionData.status === 'error') {
+        const errorMsg = sessionData.message || 'Failed to create session';
+        console.error('Session creation error:', sessionData);
+        alert(`Session creation failed: ${errorMsg}\n\nCheck your backend logs for details. Your credentials are configured, but the session API call failed.`);
+        setConnectingMerchant(null);
+        return;
+      }
+      
+      // Map 'dev' to 'development' and 'prod' to 'production' for SDK
+      const environmentMap: { [key: string]: string } = {
+        'dev': 'development',
+        'prod': 'production',
+        'development': 'development',
+        'production': 'production'
+      };
+      
+      // Try multiple ways to get session_id (Knot API might return it in different formats)
+      const sessionId = sessionData.session_id || 
+                       sessionData.session?.session_id || 
+                       (sessionData.session && typeof sessionData.session === 'object' ? sessionData.session.session_id : null);
       const clientId = sessionData.clientId;
-      const environment = sessionData.environment; // 'development' or 'production'
+      const environment = environmentMap[sessionData.environment] || sessionData.environment;
+
+      console.log('Session data received:', {
+        hasSession: !!sessionData.session,
+        sessionId: sessionId,
+        clientId: clientId,
+        environment: environment,
+        fullResponse: sessionData
+      });
 
       if (!sessionId || !clientId) {
-        throw new Error('Missing session ID or client ID from backend');
+        // If session creation failed but we have clientId, show helpful error
+        if (clientId && sessionData.status === 'error') {
+          throw new Error(`Session creation failed: ${sessionData.message || 'Unknown error'}. Check backend logs.`);
+        }
+        console.error('Missing session ID or client ID:', {
+          sessionId: sessionId,
+          clientId: clientId,
+          sessionData: sessionData
+        });
+        throw new Error(`Missing session ID or client ID from backend. Session ID: ${sessionId ? 'found' : 'missing'}, Client ID: ${clientId ? 'found' : 'missing'}`);
       }
 
       console.log('Session created:', { sessionId, clientId, environment });
@@ -438,44 +478,74 @@ const CustomerPortalContent = () => {
 
       // Step 3: Initialize Knot SDK v1.0+ (new API)
       const KnotapiJS = window.KnotapiJS.default || window.KnotapiJS;
+      console.log('Initializing Knot SDK with:', { sessionId, clientId, environment, merchantId });
+      
+      if (!KnotapiJS) {
+        throw new Error('KnotapiJS class not found');
+      }
+      
       const knotapi = new KnotapiJS();
+      console.log('KnotapiJS instance created:', knotapi);
+      console.log('Available methods:', Object.keys(knotapi));
 
       // Step 4: Open the SDK with proper configuration
-      knotapi.open({
-        sessionId: sessionId,
-        clientId: clientId,
-        environment: environment, // 'development' or 'production'
-        product: 'transaction_link',
-        merchantIds: [merchantId], // Single merchant for focused experience
-        entryPoint: 'customer_portal',
-        useCategories: false, // Single merchant, no need for categories
-        useSearch: false, // Single merchant, no need for search
-        onSuccess: (product: string, details: any) => {
-          console.log('Account connected successfully!', product, details);
-          setConnectingMerchant(null);
-          
-          alert(`Account connected! Your ${details.merchantName || 'merchant'} transactions will sync automatically.`);
-          
-          // Refresh customer data after a short delay (webhook will update)
-          setTimeout(() => {
-            if (currentCustomerId) {
-              loadCustomerData(currentCustomerId);
-            }
-          }, 2000);
-        },
-        onError: (product: string, errorCode: string, errorDescription: string) => {
-          console.error('Knot connection error:', { product, errorCode, errorDescription });
-          setConnectingMerchant(null);
-          alert(`Connection failed: ${errorCode} - ${errorDescription}`);
-        },
-        onExit: (product: string) => {
-          console.log('Knot SDK closed', product);
-          setConnectingMerchant(null);
-        },
-        onEvent: (product: string, event: string, merchant: string, merchantId: number, payload: any, taskId: string) => {
-          console.log('Knot SDK event:', { product, event, merchant, merchantId, payload, taskId });
+      console.log('Opening Knot SDK widget...');
+      
+      try {
+        const openResult = knotapi.open({
+          sessionId: sessionId,
+          clientId: clientId,
+          environment: environment, // 'development' or 'production'
+          product: 'transaction_link',
+          merchantIds: [merchantId], // Single merchant for focused experience
+          entryPoint: 'customer_portal',
+          useCategories: false, // Single merchant, no need for categories
+          useSearch: false, // Single merchant, no need for search
+          onSuccess: (product: string, details: any) => {
+            console.log('✅ Account connected successfully!', product, details);
+            setConnectingMerchant(null);
+            
+            alert(`Account connected! Your ${details.merchantName || 'merchant'} transactions will sync automatically.`);
+            
+            // Refresh customer data after a short delay (webhook will update)
+            setTimeout(() => {
+              if (currentCustomerId) {
+                loadCustomerData(currentCustomerId);
+              }
+            }, 2000);
+          },
+          onError: (product: string, errorCode: string, errorDescription: string) => {
+            console.error('❌ Knot connection error:', { product, errorCode, errorDescription });
+            setConnectingMerchant(null);
+            alert(`Connection failed: ${errorCode} - ${errorDescription}`);
+          },
+          onExit: (product: string) => {
+            console.log('🚪 Knot SDK closed', product);
+            setConnectingMerchant(null);
+          },
+          onEvent: (product: string, event: string, merchant: string, merchantId: number, payload: any, taskId: string) => {
+            console.log('📡 Knot SDK event:', { product, event, merchant, merchantId, payload, taskId });
+          }
+        });
+        
+        console.log('knotapi.open() returned:', openResult);
+        
+        // If open() returns a promise, wait for it
+        if (openResult && typeof openResult.then === 'function') {
+          openResult.then(() => {
+            console.log('✅ SDK open promise resolved');
+          }).catch((err: any) => {
+            console.error('❌ SDK open promise rejected:', err);
+            setConnectingMerchant(null);
+            alert(`Failed to open Knot SDK: ${err.message || 'Unknown error'}`);
+          });
         }
-      });
+      } catch (openError: any) {
+        console.error('❌ Error calling knotapi.open():', openError);
+        setConnectingMerchant(null);
+        alert(`Failed to open Knot SDK: ${openError.message || 'Unknown error'}`);
+        throw openError;
+      }
 
     } catch (error: any) {
       console.error('Error connecting merchant account:', error);

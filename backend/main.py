@@ -10,8 +10,13 @@ from datetime import datetime, timedelta
 import random
 import threading
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from project root
+import pathlib
+project_root = pathlib.Path(__file__).parent.parent
+env_path = project_root / '.env'
+load_dotenv(dotenv_path=env_path)
+print(f"📁 Loading .env from: {env_path}")
+print(f"   .env exists: {env_path.exists()}")
 
 # Import our modules
 from models import db, Store, FruitInventory, FreshnessStatus, Customer, PurchaseHistory, Recommendation, WasteLog
@@ -785,8 +790,16 @@ def create_knot_session():
         knot_env = os.getenv('KNOT_ENV', 'tunnel')
         client_id = os.getenv('KNOT_CLIENT_ID')
         
+        # Debug logging - check all env vars
+        print(f"🔍 Session creation debug:")
+        print(f"   KNOT_ENV from os.getenv: {knot_env}")
+        print(f"   KNOT_ENV raw: {repr(os.getenv('KNOT_ENV'))}")
+        print(f"   KNOT_CLIENT_ID exists: {bool(client_id)}")
+        print(f"   KNOT_CLIENT_ID value: {client_id[:30] + '...' if client_id and len(client_id) > 30 else client_id}")
+        
         # In tunnel mode, sessions aren't needed - return mock data
-        if knot_env == 'tunnel':
+        if knot_env == 'tunnel' or knot_env is None:
+            print(f"⚠️  Detected tunnel mode (env={knot_env})")
             return jsonify({
                 'status': 'success',
                 'message': 'Tunnel mode - sessions not required',
@@ -805,16 +818,51 @@ def create_knot_session():
         data = request.get_json()
         external_user_id = data.get('external_user_id', 'test_user_001')
         
+        # Always return clientId and environment, even if session creation fails
+        base_response = {
+            'clientId': client_id,
+            'environment': knot_env,  # 'dev' or 'prod' (will be mapped to 'development'/'production' in frontend)
+        }
+        
+        if not client_id:
+            return jsonify({
+                **base_response,
+                'status': 'error',
+                'message': 'KNOT_CLIENT_ID not configured in .env file',
+                'note': 'Please set KNOT_CLIENT_ID in your .env file'
+            }), 400
+        
         manager = KnotSessionManager()
         session = manager.create_session(external_user_id)
         
         if session:
+            print(f"✅ Session created successfully: {session}")
+            # Extract session_id - Knot API returns {'session': 'session_id_string'} or {'session_id': '...'}
+            if isinstance(session, dict):
+                # If session is a dict, extract session_id from it
+                session_id = session.get('session') or session.get('session_id')
+                # If session is a string, use it directly
+                if isinstance(session_id, str):
+                    pass  # session_id is already a string
+                elif session_id is None:
+                    # Try to get it from nested structure
+                    session_id = session.get('session_id')
+            elif isinstance(session, str):
+                # If session itself is a string (the session ID), use it directly
+                session_id = session
+            else:
+                session_id = None
+            
+            if not session_id:
+                print(f"⚠️  Could not extract session_id from: {session}")
+                session_id = None
+            
             return jsonify({
                 'status': 'success',
                 'message': 'Session created. Use session_id with Knot SDK.',
                 'session': session,
-                'clientId': client_id,
-                'environment': knot_env,  # 'development' or 'production'
+                'session_id': session_id,  # Also include at top level for easier access
+                **base_response,
                 'next_steps': [
                     'Invoke Knot SDK with this session_id, clientId, and environment',
                     'User logs in with test credentials: user_good_transactions / pass_good',
@@ -823,20 +871,35 @@ def create_knot_session():
                 ]
             }), 200
         else:
+            # Session creation failed, but still return clientId/environment for debugging
+            print(f"❌ Session creation returned None/False")
             return jsonify({
+                **base_response,
                 'status': 'error',
-                'message': 'Failed to create session'
+                'message': 'Failed to create session. Check backend logs for details.',
+                'note': 'Session creation failed, but clientId and environment are available for SDK initialization'
             }), 500
     
     except ImportError:
+        knot_env = os.getenv('KNOT_ENV', 'tunnel')
+        client_id = os.getenv('KNOT_CLIENT_ID')
         return jsonify({
             'status': 'error',
-            'message': 'Session manager not available. Use tunnel mode or install SDK.'
+            'message': 'Session manager not available. Use tunnel mode or install SDK.',
+            'clientId': client_id,
+            'environment': knot_env
         }), 500
     except Exception as e:
+        knot_env = os.getenv('KNOT_ENV', 'tunnel')
+        client_id = os.getenv('KNOT_CLIENT_ID')
+        print(f"❌ Error in create_knot_session: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': str(e),
+            'clientId': client_id,
+            'environment': knot_env
         }), 500
 
 
