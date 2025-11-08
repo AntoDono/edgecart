@@ -41,9 +41,9 @@ const baseColors = [
   new THREE.Color(0x7ECA9C), // Mint green - rgb(126, 202, 156)
 ];
 const repelColors = [
-  new THREE.Color(0xECDBBA), // Warm cream on hit - rgb(236, 219, 186)
-  new THREE.Color(0xC84B31), // Gruvbox orange/red - rgb(200, 75, 49)
-  new THREE.Color(0x161616), // Almost black - rgb(22, 22, 22)
+  new THREE.Color(0xCCFFBD), // Brightest mint when hit - rgb(204, 255, 189)
+  new THREE.Color(0x7ECA9C), // Transition to mid mint - rgb(126, 202, 156)
+  new THREE.Color(0x1C1427), // Dark space purple - rgb(28, 20, 39)
 ];
 
 export const SparklingSphereR3F = ({
@@ -52,9 +52,9 @@ export const SparklingSphereR3F = ({
   interactionRadius = 1.5 * radius,
   maxGlowIntensity = 9,
   baseGlowIntensity = 2,
-  dispersalForce = 0.015,        // Reduced from 0.05 - much gentler push
+  dispersalForce = 0.008,        // Even gentler push for smoother interaction
   returnForce = 0.01,            // Reduced from 0.02 - slower return
-  dampingFactor = 0.92,          // Reduced from 0.95 - more resistance/smoother
+  dampingFactor = 0.95,          // Higher damping for smoother motion
   rotationSpeed = 0.001,         // Reduced from 0.0025 - slower rotation
   maxRepelDistance = 0.3,        // Reduced from 0.5 - particles don't travel as far
 }: SparklingSphereR3FProps) => {
@@ -253,32 +253,20 @@ export const SparklingSphereR3F = ({
         const distanceFromOrigin = particle.position.distanceTo(particle.originalPosition);
         particle.maxDistanceTraveled = Math.max(particle.maxDistanceTraveled, distanceFromOrigin);
 
-        // Calculate progress through color sequence (0 to 1)
+        // Calculate progress for intensity (0 to 1)
         const progress = Math.min(distanceFromOrigin / maxRepelDistance, 1);
 
-        // Determine which colors to lerp between
-        const colorIndex = Math.min(
-          Math.floor(progress * (repelColors.length - 1)),
-          repelColors.length - 2
-        );
-        const colorProgress = (progress * (repelColors.length - 1)) % 1;
+        // Add natural pulsating glow
+        const pulse = Math.sin(currentTime * 2) * 0.5 + 0.5; // 0 to 1 oscillation
+        const hoverPulse = Math.sin(currentTime * 3 + distanceToMouse) * 0.3 + 0.7; // Faster pulse on hover
 
-        // Lerp between current and next color
-        const currentColor = new THREE.Color();
-        currentColor.lerpColors(
-          repelColors[colorIndex],
-          repelColors[colorIndex + 1],
-          colorProgress
-        );
-
-        // Apply color and intensity with more dramatic effects
-        particle.mesh.material.color = particle.baseColor.clone().lerp(currentColor, progress);
-        particle.mesh.material.emissive = currentColor;
-        particle.mesh.material.emissiveIntensity = 2 + progress * 5;
-        particle.mesh.material.opacity = 0.9 - progress * 0.2;
+        // Use distortion color as base, add smooth glow on hover
+        particle.mesh.material.color = distortionColor;
+        particle.mesh.material.emissive = distortionColor;
+        particle.mesh.material.emissiveIntensity = 2 + distortionAmount * 2 + (pulse * 1.5) + (progress * hoverPulse * 4); // Pulsating + hover glow
+        particle.mesh.material.opacity = 0.9;
 
         // Emit particles on collision with longer cooldown and probability check
-        const currentTime = state.clock.getElapsedTime();
         // Only 3% of particles emit, and only every 1 second
         if (Math.random() < 0.03 && (!particle.lastEmitTime || currentTime - particle.lastEmitTime > 1.0)) {
           emitParticles(
@@ -310,15 +298,20 @@ export const SparklingSphereR3F = ({
             colorProgress
           );
 
+          // Add natural pulsating glow
+          const pulse = Math.sin(currentTime * 2) * 0.5 + 0.5; // 0 to 1 oscillation
+
           particle.mesh.material.color = returnColor.lerp(distortionColor, returnProgress);
           particle.mesh.material.emissive = returnColor.lerp(distortionColor, returnProgress);
-          particle.mesh.material.emissiveIntensity = 2 + (1 - returnProgress) * 3;
+          particle.mesh.material.emissiveIntensity = 2 + (1 - returnProgress) * 3 + (pulse * 1.5);
           particle.mesh.material.opacity = 0.9;
         } else {
-          // Fully at rest - use distortion-based color
+          // Fully at rest - use distortion-based color with pulsating
+          const pulse = Math.sin(currentTime * 2) * 0.5 + 0.5; // 0 to 1 oscillation
+
           particle.mesh.material.color = distortionColor;
           particle.mesh.material.emissive = distortionColor;
-          particle.mesh.material.emissiveIntensity = 2 + distortionAmount * 3;
+          particle.mesh.material.emissiveIntensity = 2 + distortionAmount * 2 + (pulse * 1.5);
           particle.mesh.material.opacity = 0.9;
         }
 

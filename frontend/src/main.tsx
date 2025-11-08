@@ -4,15 +4,54 @@ import './App.css'
 import Experience from './Experience'
 import { Canvas } from '@react-three/fiber'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
+import Aurora from './components/Aurora'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <div style={{ width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0 }}>
+    <div style={{ width: '100vw', height: '100vh', position: 'fixed', top: 0, left: 0, backgroundColor: '#000000' }}>
+      <Aurora
+        colorStops={['#7ECA9C', '#CCFFBD', '#AAF0D1']}
+        amplitude={1.2}
+        blend={0.6}
+        speed={0.3}
+      />
+      <div style={{
+        position: 'fixed',
+        top: '50%',
+        left: '8%',
+        transform: 'translateY(-50%)',
+        fontSize: '8rem',
+        fontWeight: 100,
+        color: '#FFFFFF',
+        zIndex: 2,
+        fontFamily: '"Geist", sans-serif',
+        letterSpacing: '-0.02em',
+        textShadow: '0 0 40px rgba(255, 255, 255, 0.3)',
+      }}>
+        EDGE
+      </div>
+      <div style={{
+        position: 'fixed',
+        top: '50%',
+        right: '8%',
+        transform: 'translateY(-50%)',
+        fontSize: '8rem',
+        fontWeight: 100,
+        color: '#FFFFFF',
+        zIndex: 2,
+        fontFamily: '"Geist", sans-serif',
+        letterSpacing: '-0.02em',
+        textShadow: '0 0 40px rgba(255, 255, 255, 0.3)',
+      }}>
+        CART
+      </div>
       <Canvas
+        style={{ position: 'relative', zIndex: 1 }}
         gl={{
           antialias: true,
           toneMapping: 3, // ACESFilmicToneMapping
           outputEncoding: 3, // sRGBEncoding
+          alpha: true,
         }}
         dpr={[1, 2]}
         camera={{
@@ -22,7 +61,6 @@ createRoot(document.getElementById('root')!).render(
           position: [0, 0, 6]
         }}
       >
-        <color attach="background" args={['#000000']} />
         <Experience />
         <EffectComposer multisampling={8}>
           <Bloom
