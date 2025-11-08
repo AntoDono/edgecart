@@ -79,9 +79,9 @@ if os.getenv('POPULATE', 'false').lower() == 'true':
 # Initialize Knot API client
 knot_client = get_knot_client()
 
-# Store active WebSocket connections for real-time updates
-admin_connections = set()
-customer_connections = {}  # {customer_id: ws}
+# WebSocket connections are now managed in utils/helpers.py
+# Import them for backward compatibility
+from utils.helpers import admin_connections, customer_connections
 
 # Load ripe detection model globally (once at startup)
 ripe_model = None
@@ -94,332 +94,74 @@ except Exception as e:
     print(f"⚠️ Warning: Could not load ripe detection model: {e}")
     print("   Video stream will work but without ripe detection")
 
-# ============ Utility Functions ============
+# ============ Import Utility Functions ============
+from utils.helpers import (
+    admin_connections,
+    customer_connections,
+    broadcast_to_admins,
+    notify_customer,
+    notify_quantity_change,
+    update_freshness_for_item,
+    generate_recommendations_for_item,
+    set_app_instance
+)
 
-def broadcast_to_admins(event_type, data):
-    """Broadcast message to all connected admin dashboards"""
-    message = json.dumps({
-        'type': event_type,
-        'data': data,
-        'timestamp': datetime.utcnow().isoformat()
-    })
-    
-    for ws in admin_connections.copy():
-        try:
-            ws.send(message)
-        except Exception:
-            admin_connections.discard(ws)
+# Set app instance for threading in helpers
+set_app_instance(app)
+
+# ============ Import Route Modules ============
+from api.routes import register_basic_routes
+from api.inventory import register_inventory_routes
+
+# Register routes
+register_basic_routes(app)
+register_inventory_routes(app)
 
 
-def notify_customer(customer_id, event_type, data):
-    """Send notification to specific customer"""
-    if customer_id in customer_connections:
-        ws = customer_connections[customer_id]
-        try:
-            ws.send(json.dumps({
-                'type': event_type,
-                'data': data,
-                'timestamp': datetime.utcnow().isoformat()
-            }))
-        except Exception:
-            del customer_connections[customer_id]
-
+# ============ Camera-Specific Helper Functions ============
 
 def update_freshness_from_camera(inventory_id, ripe_score, confidence):
     """
     Update freshness status from camera detection (async)
-    Called automatically when camera detects ripeness
+    Called automatically when camera detects ripeness.
+    
+    Note: This function is specific to camera detection and converts ripe_score (0-100)
+    to freshness_score (0-1.0) before calling update_freshness_for_item.
     """
     try:
         with app.app_context():
-            # Get or create freshness status
-            freshness = FreshnessStatus.query.filter_by(inventory_id=inventory_id).first()
+            # Convert ripe_score from 0-100 scale to 0-1.0 scale
+            freshness_score = ripe_score / 100.0 if ripe_score is not None else None
             
-            if not freshness:
-                freshness = FreshnessStatus(inventory_id=inventory_id)
-                db.session.add(freshness)
-            
-            # Update freshness data
-            freshness.freshness_score = ripe_score
-            freshness.confidence_level = confidence
-            freshness.last_checked = datetime.utcnow()
-            
-            # Predict expiry based on ripeness (simple heuristic)
-            # Higher ripeness = closer to expiry
-            days_until_expiry = int((ripe_score / 100) * 10)  # 0-10 days
-            freshness.predicted_expiry_date = datetime.utcnow() + timedelta(days=days_until_expiry)
-            
-            # Calculate discount and status
-            old_discount = freshness.discount_percentage
-            freshness.discount_percentage = freshness.calculate_discount()
-            freshness.update_status()
-            
-            # Update inventory price if discount changed
-            inventory = FruitInventory.query.get(inventory_id)
-            if inventory and freshness.discount_percentage != old_discount:
-                inventory.current_price = round(
-                    inventory.original_price * (1 - freshness.discount_percentage / 100),
-                    2
-                )
-                inventory.updated_at = datetime.utcnow()
-            
-            db.session.commit()
-            
-            # Broadcast update to admin dashboard
-            broadcast_to_admins('freshness_updated', {
-                'inventory_id': inventory_id,
-                'freshness': freshness.to_dict(),
-                'item': inventory.to_dict() if inventory else None,
-                'source': 'camera'
-            })
-            
-            # Send alert if critical
-            if freshness.status == 'critical':
-                broadcast_to_admins('freshness_alert', {
-                    'message': f'Camera detected critical ripeness: {inventory.fruit_type}' if inventory else 'Critical item detected',
-                    'inventory_id': inventory_id,
-                    'freshness_score': freshness.freshness_score
-                })
-            
-            # Trigger recommendations if discount changed and significant
-            if freshness.discount_percentage > old_discount and freshness.discount_percentage >= 20:
-                print(f"🎯 Triggering recommendations for item {inventory_id} (discount: {freshness.discount_percentage}%)")
-                generate_recommendations_for_item(inventory_id)
+            if freshness_score is not None:
+                # Use the helper function from utils.helpers
+                update_freshness_for_item(inventory_id, freshness_score)
+                
+                # Also update confidence and predicted expiry
+                freshness = FreshnessStatus.query.filter_by(inventory_id=inventory_id).first()
+                if freshness:
+                    freshness.confidence_level = confidence
+                    # Predict expiry based on ripeness (simple heuristic)
+                    # Higher ripeness = closer to expiry
+                    days_until_expiry = int(freshness_score * 10)  # 0-10 days
+                    freshness.predicted_expiry_date = datetime.utcnow() + timedelta(days=days_until_expiry)
+                    freshness.last_checked = datetime.utcnow()
+                    db.session.commit()
+                    
+                    # Broadcast update with source indicator
+                    inventory = FruitInventory.query.get(inventory_id)
+                    if inventory:
+                        broadcast_to_admins('freshness_updated', {
+                            'inventory_id': inventory_id,
+                            'freshness': freshness.to_dict(),
+                            'item': inventory.to_dict(),
+                            'source': 'camera'
+                        })
     
     except Exception as e:
         print(f"Error updating freshness from camera: {e}")
         import traceback
         traceback.print_exc()
-
-
-def notify_quantity_change(item, old_quantity, new_quantity):
-    """Helper function to notify about quantity changes"""
-    quantity_delta = new_quantity - old_quantity
-    if quantity_delta != 0:
-        item_data = item.to_dict()
-        item_data['quantity_change'] = {
-            'old_quantity': old_quantity,
-            'new_quantity': new_quantity,
-            'delta': quantity_delta,
-            'change_type': 'increase' if quantity_delta > 0 else 'decrease'
-        }
-        
-        # Send specific quantity change event
-        broadcast_to_admins('quantity_changed', {
-            'inventory_id': item.id,
-            'fruit_type': item.fruit_type,
-            'old_quantity': old_quantity,
-            'new_quantity': new_quantity,
-            'delta': quantity_delta,
-            'change_type': 'increase' if quantity_delta > 0 else 'decrease',
-            'item': item_data,
-            'timestamp': datetime.utcnow().isoformat()
-        })
-        
-        return item_data
-    return item.to_dict()
-
-
-# ============ Basic Routes ============
-
-@app.route('/')
-def index():
-    """Serve the WebSocket test client"""
-    return send_from_directory(os.path.dirname(__file__), 'ws_test_client.html')
-
-
-@app.route('/routes', methods=['GET'])
-def list_routes():
-    """List all available routes and WebSocket endpoints"""
-    routes = []
-    for rule in app.url_map.iter_rules():
-        if rule.endpoint != 'static':
-            routes.append({
-                'endpoint': rule.endpoint,
-                'methods': sorted(list(rule.methods - {'HEAD', 'OPTIONS'})),
-                'path': str(rule)
-            })
-    
-    return jsonify({
-        'api_routes': sorted(routes, key=lambda x: x['path']),
-        'websockets': [
-            'ws://localhost:5000/ws/admin - Admin dashboard updates',
-            'ws://localhost:5000/ws/customer/<customer_id> - Customer notifications',
-            'ws://localhost:5000/ws/stream_video - Video stream'
-        ]
-    }), 200
-
-
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'message': 'SusCart backend is running',
-        'database': 'connected',
-        'knot_api': 'mock' if hasattr(knot_client, 'mock_data') else 'connected'
-    }), 200
-
-
-# ============ Inventory Management API ============
-
-@app.route('/api/stores', methods=['GET'])
-def get_stores():
-    """Get all stores"""
-    try:
-        stores = Store.query.all()
-        return jsonify({
-            'stores': [store.to_dict() for store in stores]
-        }), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/inventory', methods=['GET'])
-def get_inventory():
-    """Get all inventory items with optional filters"""
-    try:
-        # Query parameters for filtering
-        store_id = request.args.get('store_id', type=int)
-        fruit_type = request.args.get('fruit_type')
-        status = request.args.get('status')  # fresh, warning, critical, expired
-        min_discount = request.args.get('min_discount', type=float)
-        
-        query = FruitInventory.query
-        
-        if store_id:
-            query = query.filter_by(store_id=store_id)
-        if fruit_type:
-            query = query.filter_by(fruit_type=fruit_type)
-        
-        items = query.all()
-        
-        # Apply freshness filters
-        if status or min_discount is not None:
-            filtered_items = []
-            for item in items:
-                if item.freshness:
-                    if status and item.freshness.status != status:
-                        continue
-                    if min_discount is not None and item.freshness.discount_percentage < min_discount:
-                        continue
-                filtered_items.append(item)
-            items = filtered_items
-        
-        return jsonify({
-            'count': len(items),
-            'items': [item.to_dict() for item in items]
-        }), 200
-    
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/inventory/<int:item_id>', methods=['GET'])
-def get_inventory_item(item_id):
-    """Get specific inventory item details"""
-    try:
-        item = FruitInventory.query.get_or_404(item_id)
-        return jsonify(item.to_dict()), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 404
-
-
-@app.route('/api/inventory', methods=['POST'])
-def create_inventory_item():
-    """Add new inventory item"""
-    try:
-        data = request.get_json()
-        
-        item = FruitInventory(
-            store_id=data['store_id'],
-            fruit_type=data['fruit_type'],
-            variety=data.get('variety'),
-            quantity=data['quantity'],
-            batch_number=data.get('batch_number'),
-            location_in_store=data.get('location_in_store'),
-            original_price=data['original_price'],
-            current_price=data.get('current_price', data['original_price'])
-        )
-        
-        db.session.add(item)
-        db.session.commit()
-        
-        # Notify about quantity change (new item = increase from 0)
-        item_data = notify_quantity_change(item, 0, item.quantity)
-        
-        # Broadcast to admin dashboards
-        broadcast_to_admins('inventory_added', item_data)
-        
-        return jsonify({
-            'message': 'Inventory item created',
-            'item': item_data
-        }), 201
-    
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
-
-
-@app.route('/api/inventory/<int:item_id>', methods=['PUT'])
-def update_inventory_item(item_id):
-    """Update inventory item"""
-    try:
-        item = FruitInventory.query.get_or_404(item_id)
-        data = request.get_json()
-        
-        # Track quantity changes
-        old_quantity = item.quantity
-        
-        # Update fields
-        if 'quantity' in data:
-            item.quantity = data['quantity']
-        if 'fruit_type' in data:
-            item.fruit_type = data['fruit_type']
-        if 'variety' in data:
-            item.variety = data['variety']
-        if 'batch_number' in data:
-            item.batch_number = data['batch_number']
-        if 'location_in_store' in data:
-            item.location_in_store = data['location_in_store']
-        if 'original_price' in data:
-            item.original_price = data['original_price']
-        if 'current_price' in data:
-            item.current_price = data['current_price']
-        
-        item.updated_at = datetime.utcnow()
-        db.session.commit()
-        
-        # Notify about quantity change if it changed
-        update_data = notify_quantity_change(item, old_quantity, item.quantity)
-        
-        # Also send general inventory update
-        broadcast_to_admins('inventory_updated', update_data)
-        
-        return jsonify({
-            'message': 'Inventory item updated',
-            'item': update_data
-        }), 200
-    
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
-
-
-@app.route('/api/inventory/<int:item_id>', methods=['DELETE'])
-def delete_inventory_item(item_id):
-    """Delete inventory item"""
-    try:
-        item = FruitInventory.query.get_or_404(item_id)
-        db.session.delete(item)
-        db.session.commit()
-        
-        broadcast_to_admins('inventory_deleted', {'id': item_id})
-        
-        return jsonify({'message': 'Inventory item deleted'}), 200
-    
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 400
 
 
 # ============ Freshness Monitoring API ============
@@ -1059,90 +801,6 @@ def knot_webhook():
 
 
 # ============ Recommendations API ============
-
-def generate_recommendations_for_item(inventory_id):
-    """Generate recommendations for a discounted item"""
-    try:
-        item = FruitInventory.query.get(inventory_id)
-        if not item or not item.freshness:
-            print(f"⚠️  Item {inventory_id} not found or has no freshness data")
-            return
-        
-        # Only recommend if there's a decent discount
-        if item.freshness.discount_percentage < 15:
-            print(f"⚠️  Item {inventory_id} discount too low ({item.freshness.discount_percentage}%), skipping recommendations")
-            return
-        
-        print(f"🔍 Finding customers who like {item.fruit_type} (discount: {item.freshness.discount_percentage}%)")
-        
-        # Find customers who like this fruit type
-        customers = Customer.query.all()
-        recommendations_created = []
-        
-        for customer in customers:
-            prefs = customer.get_preferences()
-            favorite_fruits = prefs.get('favorite_fruits', [])
-            max_price = prefs.get('max_price', 10.0)
-            preferred_discount = prefs.get('preferred_discount', 20)
-            
-            print(f"  Checking customer {customer.id} ({customer.name}): favorites={favorite_fruits}")
-            
-            # Check if this item matches customer preferences
-            if (item.fruit_type in favorite_fruits and 
-                item.current_price <= max_price and
-                item.freshness.discount_percentage >= preferred_discount):
-                
-                print(f"  ✅ Match! Creating recommendation for customer {customer.id}")
-                
-                # Create recommendation
-                recommendation = Recommendation(
-                    customer_id=customer.id,
-                    inventory_id=inventory_id,
-                    priority_score=item.freshness.discount_percentage
-                )
-                
-                recommendation.set_reason({
-                    'match_type': 'favorite_fruit',
-                    'fruit': item.fruit_type,
-                    'discount': item.freshness.discount_percentage,
-                    'price': item.current_price,
-                    'original_price': item.original_price
-                })
-                
-                db.session.add(recommendation)
-                db.session.flush()  # Get ID without committing
-                
-                # Store for notification after commit
-                recommendations_created.append({
-                    'customer_id': customer.id,
-                    'recommendation': recommendation
-                })
-        
-        # Commit all recommendations at once
-        db.session.commit()
-        
-        # NOW send notifications (after commit, so data is in DB)
-        for rec_info in recommendations_created:
-            customer_id = rec_info['customer_id']
-            recommendation = rec_info['recommendation']
-            
-            print(f"📨 Sending notification to customer {customer_id} for recommendation {recommendation.id}")
-            
-            # Send notification with full data
-            notify_customer(customer_id, 'new_recommendation', {
-                'recommendation_id': recommendation.id,
-                'item': recommendation.to_dict()
-            })
-        
-        print(f"✅ Created {len(recommendations_created)} recommendations for item {inventory_id}")
-    
-    except Exception as e:
-        print(f"❌ Error generating recommendations: {e}")
-        import traceback
-        traceback.print_exc()
-        db.session.rollback()
-
-
 @app.route('/api/recommendations/<int:customer_id>', methods=['GET'])
 def get_recommendations(customer_id):
     """Get personalized recommendations for customer"""
@@ -1411,11 +1069,31 @@ def stream_video_websocket(ws):
                         cached_detections = processed_detections
                         last_detection_time = current_time
                         
-                        # Count detected classes
+                        # Count detected classes and collect ripe scores
                         current_class_counts = {}
+                        ripe_scores_by_type = {}  # {fruit_type: [ripe_score1, ripe_score2, ...]}
+                        
                         for det in processed_detections:
                             class_name = det['class']
                             current_class_counts[class_name] = current_class_counts.get(class_name, 0) + 1
+                            
+                            # Collect ripe scores for freshness calculation
+                            if det.get('ripe_score') is not None:
+                                if class_name not in ripe_scores_by_type:
+                                    ripe_scores_by_type[class_name] = []
+                                ripe_scores_by_type[class_name].append(det['ripe_score'])
+                        
+                        # Calculate average freshness scores per fruit type
+                        # Note: ripe_score from get_ripe_percentage is already 0-100, but we want 0-1.0
+                        # So we need to divide by 100 to convert back to 0-1.0 scale
+                        freshness_updates = {}  # {fruit_type: average_freshness_score}
+                        for fruit_type, ripe_scores in ripe_scores_by_type.items():
+                            # Filter out None values and ensure we have scores
+                            valid_scores = [score for score in ripe_scores if score is not None]
+                            if valid_scores and len(valid_scores) > 0:
+                                # ripe_scores are 0-100 from get_ripe_percentage, convert to 0-1.0
+                                avg_freshness = (sum(valid_scores) / len(valid_scores)) / 100.0
+                                freshness_updates[fruit_type] = round(avg_freshness, 4)
                         
                         # Compare with previous counts and update database
                         # Batch all updates to do in a single database transaction
@@ -1433,7 +1111,8 @@ def stream_video_websocket(ws):
                                         'item_id': item_id,
                                         'fruit_type': fruit_type,
                                         'old_quantity': old_quantity,
-                                        'new_quantity': current_count
+                                        'new_quantity': current_count,
+                                        'freshness_score': freshness_updates.get(fruit_type)
                                     })
                                     # Update cache immediately
                                     inventory_cache[fruit_type] = (item_id, current_count)
@@ -1443,7 +1122,8 @@ def stream_video_websocket(ws):
                                         'type': 'create',
                                         'fruit_type': fruit_type,
                                         'quantity': current_count,
-                                        'store_id': default_store_id
+                                        'store_id': default_store_id,
+                                        'freshness_score': freshness_updates.get(fruit_type)
                                     })
                         
                         # Handle fruits that were previously detected but are no longer detected (count = 0)
@@ -1457,10 +1137,28 @@ def stream_video_websocket(ws):
                                         'item_id': item_id,
                                         'fruit_type': fruit_type,
                                         'old_quantity': old_quantity,
-                                        'new_quantity': 0
+                                        'new_quantity': 0,
+                                        'freshness_score': None  # No freshness update when fruit disappears
                                     })
                                     # Update cache immediately
                                     inventory_cache[fruit_type] = (item_id, 0)
+                        
+                        # Also update freshness for fruits that are still detected (even if count didn't change)
+                        for fruit_type, freshness_score in freshness_updates.items():
+                            if fruit_type in inventory_cache and fruit_type in current_class_counts:
+                                item_id, _ = inventory_cache[fruit_type]
+                                # Check if this update is already in updates_to_process
+                                already_updating = any(
+                                    u.get('item_id') == item_id and u.get('type') == 'update'
+                                    for u in updates_to_process
+                                )
+                                if not already_updating:
+                                    updates_to_process.append({
+                                        'type': 'freshness_only',
+                                        'item_id': item_id,
+                                        'fruit_type': fruit_type,
+                                        'freshness_score': freshness_score
+                                    })
                         
                         # Process all updates in a single database transaction
                         if updates_to_process:
@@ -1472,6 +1170,10 @@ def stream_video_websocket(ws):
                                             db_item.quantity = update['new_quantity']
                                             db_item.updated_at = datetime.utcnow()
                                             notify_quantity_change(db_item, update['old_quantity'], update['new_quantity'])
+                                            
+                                            # Update freshness if provided
+                                            if update.get('freshness_score') is not None:
+                                                update_freshness_for_item(db_item.id, update['freshness_score'])
                                     elif update['type'] == 'create':
                                         # Generate time-based random batch number
                                         timestamp = datetime.utcnow()
@@ -1491,11 +1193,18 @@ def stream_video_websocket(ws):
                                         db.session.flush()  # Get the ID without committing
                                         inventory_cache[update['fruit_type']] = (new_item.id, update['quantity'])
                                         
+                                        # Update freshness if provided
+                                        if update.get('freshness_score') is not None:
+                                            update_freshness_for_item(new_item.id, update['freshness_score'])
+                                        
                                         # Notify about quantity change (new item = increase from 0)
                                         item_data = notify_quantity_change(new_item, 0, update['quantity'])
                                         
                                         # Also broadcast inventory_added event so frontend can add it to the list
                                         broadcast_to_admins('inventory_added', item_data)
+                                    elif update['type'] == 'freshness_only':
+                                        # Update freshness without changing quantity
+                                        update_freshness_for_item(update['item_id'], update['freshness_score'])
                                 
                                 # Commit all changes at once
                                 db.session.commit()

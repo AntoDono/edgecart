@@ -23,6 +23,22 @@ body {
   /* Allow scrolling for user page */
 }
 
+/* Allow scrolling on user page */
+body.user-page,
+html.user-page {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
+#root.user-page {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
 canvas {
   touch-action: none;
 }
