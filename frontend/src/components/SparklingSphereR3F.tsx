@@ -50,14 +50,14 @@ const repelColors = [
 export const SparklingSphereR3F = ({
   radius = 1.1,
   particleCount = 1000,
-  interactionRadius = 1.5 * radius,
+  interactionRadius = 2.5 * radius,  // Increased from 1.5 - larger interaction area
   maxGlowIntensity = 9,
   baseGlowIntensity = 2,
-  dispersalForce = 0.008,        // Even gentler push for smoother interaction
-  returnForce = 0.01,            // Reduced from 0.02 - slower return
-  dampingFactor = 0.95,          // Higher damping for smoother motion
+  dispersalForce = 0.04,         // Increased from 0.008 - much stronger push
+  returnForce = 0.015,           // Slightly increased - faster return
+  dampingFactor = 0.92,          // Reduced from 0.95 - more dynamic movement
   rotationSpeed = 0.001,         // Reduced from 0.0025 - slower rotation
-  maxRepelDistance = 0.3,        // Reduced from 0.5 - particles don't travel as far
+  maxRepelDistance = 0.7,        // Increased from 0.3 - particles travel farther
 }: SparklingSphereR3FProps) => {
   const groupRef = useRef<THREE.Group>(null);
   const particles = useRef<ParticleProps[]>([]);
@@ -225,8 +225,8 @@ export const SparklingSphereR3F = ({
       const distanceToMouse = mousePosition3D.current.distanceTo(particle.position);
       const isInRange = distanceToMouse < interactionRadius;
 
-      // Scale force based on mouse speed and distance - much gentler
-      const speedFactor = Math.min(mouseSpeed * 2, 1); // Reduced multiplier and cap
+      // Scale force based on mouse speed and distance - more reactive
+      const speedFactor = Math.min(mouseSpeed * 5, 2); // Increased multiplier for more reaction
       const distanceFactor = 1 - (distanceToMouse / interactionRadius);
       const force = isInRange
         ? dispersalForce * speedFactor * distanceFactor
@@ -239,12 +239,12 @@ export const SparklingSphereR3F = ({
           .sub(mousePosition3D.current)
           .normalize();
 
-        // Add some influence from mouse velocity direction - reduced
+        // Add strong influence from mouse velocity direction for dramatic effect
         const mouseInfluence = mouseVelocity.current.clone().normalize();
-        repulsionDir.lerp(mouseInfluence, 0.15); // Reduced from 0.3 to 0.15
+        repulsionDir.lerp(mouseInfluence, 0.4); // Increased from 0.15 to 0.4 - more directional
 
-        // Apply force with less randomization for smoother movement
-        const randomFactor = 1 + (Math.random() - 0.5) * 0.2; // Reduced from ±20% to ±10%
+        // Apply force with more variation for dynamic movement
+        const randomFactor = 1 + (Math.random() - 0.5) * 0.4; // Increased variation
         particle.velocity.add(
           repulsionDir.multiplyScalar(force * randomFactor)
         );
