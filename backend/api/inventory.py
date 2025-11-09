@@ -10,6 +10,38 @@ from pathlib import Path
 from blemish_detection.blemish import detect_blemishes
 from utils.image_storage import DETECTION_IMAGES_DIR, get_category_images, mark_image_as_processed, save_processed_image
 
+# Import the global memory cache from main (we'll access it via app context)
+# Note: This will be set up when routes are registered
+
+
+def _save_memory_images_to_disk(category: str, memory_cache):
+    """Save ONLY top 3 images from memory cache to disk before fetching"""
+    category_lower = category.lower()
+    if category_lower not in memory_cache:
+        return
+    
+    memory_images = memory_cache[category_lower]
+    if not memory_images:
+        return
+    
+    # Take ONLY top 3 from memory (latest first)
+    top_3_memory = memory_images[-3:] if len(memory_images) >= 3 else memory_images
+    
+    print(f"💾 [Analyze] Saving top {len(top_3_memory)} images from memory to disk for {category_lower}")
+    
+    # Save only top 3 images from memory to disk
+    for detection in top_3_memory:
+        if 'cropped_image' in detection and detection['cropped_image'] is not None:
+            # Save to disk as processed image
+            save_processed_image(
+                detection['cropped_image'],
+                category_lower,
+                detection.get('metadata')
+            )
+    
+    # Clear memory cache after saving (images are now on disk)
+    memory_cache[category_lower] = []
+
 
 def register_inventory_routes(app):
     """Register inventory management routes"""
@@ -210,15 +242,30 @@ def register_inventory_routes(app):
         """Analyze all inventory items without actual freshness scores and calculate them"""
         def generate():
             try:
+                # Send initial connection message
+                yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE connection established'})}\n\n"
+                
                 with app.app_context():
+                    # Get memory cache from app config
+                    category_images_memory_cache = app.config.get('category_images_memory_cache', {})
+                    
                     # Get all inventory items that don't have actual freshness scores
                     items = FruitInventory.query.all()
+                    
+                    print(f"\n🔍 [Analyze] Checking all inventory items:")
+                    for item in items:
+                        scores = item.get_actual_freshness_scores()
+                        avg = item.get_actual_freshness_avg()
+                        print(f"  - {item.fruit_type} (ID: {item.id}): {len(scores) if scores else 0} scores, avg: {avg}")
+                    
                     items_to_process = [
                         item for item in items 
                         if not item.get_actual_freshness_scores() or len(item.get_actual_freshness_scores()) == 0
                     ]
                     
                     total_items = len(items_to_process)
+                    
+                    print(f"\n📋 [Analyze] Items to process ({total_items}): {[item.fruit_type for item in items_to_process]}")
                     
                     if total_items == 0:
                         yield f"data: {json.dumps({'type': 'complete', 'progress': 100, 'message': 'All items already analyzed'})}\n\n"
@@ -229,13 +276,15 @@ def register_inventory_routes(app):
                     for idx, item in enumerate(items_to_process):
                         fruit_type = item.fruit_type.lower()
                         
-                        # Send progress update before processing
-                        progress_before = int((idx / total_items) * 100)
-                        yield f"data: {json.dumps({'type': 'progress', 'progress': progress_before, 'current': idx + 1, 'total': total_items, 'item': item.fruit_type, 'message': f'Processing {item.fruit_type}...'})}\n\n"
+                        # Save images from memory to disk before fetching
+                        _save_memory_images_to_disk(fruit_type, category_images_memory_cache)
                         
                         # Get detection images for this fruit type (only processed images on disk)
                         images = get_category_images(fruit_type)
                         detection_images = [img for img in images if img['filename'].startswith('processed_')]
+                        
+                        # Limit to top 3 images for blemish processing
+                        detection_images = detection_images[:3]
                         
                         if not detection_images:
                             # Send progress update after completion (even if no images)
@@ -246,7 +295,7 @@ def register_inventory_routes(app):
                         
                         # Process each processed image
                         scores = []
-                        for img_info in detection_images:
+                        for img_idx, img_info in enumerate(detection_images):
                             image_path = DETECTION_IMAGES_DIR / fruit_type / img_info['filename']
                             
                             # Check if file exists
@@ -254,12 +303,18 @@ def register_inventory_routes(app):
                                 print(f"⚠️ Image {image_path} not found, skipping...")
                                 continue
                             
+                            # Send granular progress update for each image
+                            image_progress = int((idx + (img_idx / len(detection_images))) / total_items * 100)
+                            yield f"data: {json.dumps({'type': 'progress', 'progress': image_progress, 'current': idx + 1, 'total': total_items, 'item': item.fruit_type, 'message': f'Processing {item.fruit_type} ({img_idx + 1}/{len(detection_images)})...'})}\n\n"
+                            
                             # Run blemish detection if not already done
                             blemishes_data = None
                             if img_info.get('metadata') and 'blemishes' in img_info['metadata']:
                                 blemishes_data = img_info['metadata']['blemishes']
+                                print(f"📊 [Analyze] Using existing blemish data for {img_info['filename']}")
                             else:
                                 try:
+                                    print(f"🔍 [Analyze] Running blemish detection on {img_info['filename']}")
                                     blemish_result = detect_blemishes(str(image_path))
                                     blemishes_data = {
                                         'bboxes': blemish_result['bboxes'],
@@ -274,12 +329,16 @@ def register_inventory_routes(app):
                                     metadata_path = image_path.with_suffix('.json')
                                     with open(metadata_path, 'w') as f:
                                         json.dump(img_info['metadata'], f, indent=2, default=str)
+                                    print(f"✅ [Analyze] Saved blemish data for {img_info['filename']}")
                                         
                                 except Exception as e:
-                                    print(f"Error detecting blemishes for {image_path}: {e}")
+                                    print(f"❌ [Analyze] Error detecting blemishes for {image_path}: {e}")
                                     continue
                             
                             # Calculate actual freshness score
+                            print(f"💯 [Analyze] Calculating freshness score for {img_info['filename']}")
+                            print(f"    Blemishes data: {blemishes_data}")
+                            
                             if blemishes_data and blemishes_data.get('bboxes'):
                                 # Load image to get dimensions
                                 img = cv2.imread(str(image_path))
@@ -305,14 +364,24 @@ def register_inventory_routes(app):
                                     total_penalty = count_penalty + coverage_penalty
                                     freshness_score = max(0, 1.0 - total_penalty)
                                     
+                                    print(f"    Calculated score: {freshness_score:.3f} (blemishes: {blemish_count}, coverage: {blemish_cover_percent:.2f}%)")
                                     scores.append(freshness_score)
+                                else:
+                                    print(f"⚠️  [Analyze] Could not load image: {image_path}")
+                            else:
+                                print(f"⚠️  [Analyze] No blemish bboxes found for {img_info['filename']}")
                         
                         # Save scores to database
+                        print(f"💾 [Analyze] Saving {len(scores)} scores for {item.fruit_type} (ID: {item.id})")
                         if scores:
                             for score in scores:
+                                print(f"    Adding score: {score:.3f}")
                                 item.add_actual_freshness_score(score)
                             item.updated_at = datetime.utcnow()
+                            
+                            print(f"    Before commit - scores: {item.get_actual_freshness_scores()}")
                             db.session.commit()
+                            print(f"    After commit - avg: {item.get_actual_freshness_avg()}")
                             
                             # Broadcast update
                             broadcast_to_admins('inventory_updated', item.to_dict())
@@ -322,6 +391,7 @@ def register_inventory_routes(app):
                             yield f"data: {json.dumps({'type': 'progress', 'progress': progress_after, 'current': idx + 1, 'total': total_items, 'item': item.fruit_type, 'message': f'Completed {item.fruit_type}'})}\n\n"
                             yield f"data: {json.dumps({'type': 'item_complete', 'item': item.fruit_type, 'scores_count': len(scores), 'average': item.get_actual_freshness_avg()})}\n\n"
                         else:
+                            print(f"⚠️  [Analyze] No scores calculated for {item.fruit_type}")
                             # Send progress update after completion (even if no scores)
                             progress_after = int(((idx + 1) / total_items) * 100)
                             yield f"data: {json.dumps({'type': 'progress', 'progress': progress_after, 'current': idx + 1, 'total': total_items, 'item': item.fruit_type, 'message': f'Completed {item.fruit_type}'})}\n\n"

@@ -100,6 +100,9 @@ proxy_state_global = None
 # Images are stored here before being saved to disk
 category_images_memory_cache = {}
 
+# Store memory cache reference in app config for access from other modules
+app.config['category_images_memory_cache'] = category_images_memory_cache
+
 # Load fresh detection model globally (once at startup)
 fresh_model = None
 fresh_device = None
@@ -322,23 +325,69 @@ def get_critical_items():
 def get_detection_images(category):
     """Get all detection images for a category and run blemish detection"""
     try:
-        # FIRST: Save images from memory to disk before fetching
-        _save_memory_images_to_disk(category)
+        print(f"\n🔍 [Detection API] Called for category: {category}")
         
+        # Check if there are already processed images on disk
         images = get_category_images(category.lower())
-        # Only get processed images (images stay in memory until processed)
-        detection_images = [img for img in images if img['filename'].startswith('processed_')]
+        print(f"📁 [Detection API] get_category_images returned {len(images)} total images")
+        if images:
+            print(f"    Image filenames: {[img['filename'] for img in images[:5]]}")
         
-        # Limit to top 3 images for blemish processing
+        detection_images = [img for img in images if img['filename'].startswith('processed_')]
+        print(f"📸 [Detection API] Found {len(detection_images)} processed images")
+        
+        # If NO processed images on disk, take top 3 from memory and save them
+        if not detection_images:
+            print(f"📸 [Detection] No processed images on disk for {category}, checking memory...")
+            category_lower = category.lower()
+            
+            if category_lower in category_images_memory_cache and category_images_memory_cache[category_lower]:
+                memory_images = category_images_memory_cache[category_lower]
+                # Take ONLY top 3 from memory (latest first)
+                top_3_memory = memory_images[-3:] if len(memory_images) >= 3 else memory_images
+                
+                print(f"💾 [Detection] Saving top {len(top_3_memory)} images from memory to disk for {category}")
+                
+                for detection in top_3_memory:
+                    if 'cropped_image' in detection and detection['cropped_image'] is not None:
+                        save_processed_image(
+                            detection['cropped_image'],
+                            category_lower,
+                            detection.get('metadata')
+                        )
+                
+                # Refresh the list after saving
+                images = get_category_images(category_lower)
+                detection_images = [img for img in images if img['filename'].startswith('processed_')]
+            else:
+                print(f"⚠️  [Detection] No images in memory for {category}")
+                return jsonify({
+                    'category': category,
+                    'count': 0,
+                    'images': []
+                }), 200
+        
+        # Limit to ONLY top 3 latest images (newest first)
         detection_images = detection_images[:3]
         
-        # Run blemish detection on each image
+        print(f"📸 [Detection] Processing ONLY top {len(detection_images)} images for {category}")
+        if detection_images:
+            print(f"    Images to process: {[img['filename'] for img in detection_images]}")
+        
+        # Run blemish detection on each image (only if needed)
         images_with_blemishes = []
         for image_info in detection_images:
             image_path = DETECTION_IMAGES_DIR / category.lower() / image_info['filename']
             
             # Check if blemish detection already exists in metadata
-            if not (image_info.get('metadata') and 'blemishes' in image_info['metadata']):
+            has_blemish_data = (
+                image_info.get('metadata') and 
+                'blemishes' in image_info['metadata'] and
+                image_info['metadata']['blemishes'].get('bboxes') is not None
+            )
+            
+            if not has_blemish_data:
+                print(f"🔍 [Detection] Running blemish detection on {image_info['filename']} (no existing data)")
                 # Run blemish detection
                 try:
                     blemish_result = detect_blemishes(str(image_path))
@@ -358,11 +407,10 @@ def get_detection_images(category):
                     with open(metadata_path, 'w') as f:
                         json.dump(image_info['metadata'], f, indent=2, default=str)
                     
-                    # Image is already processed (starts with processed_), cleanup old images
-                    keep_latest_images(DETECTION_IMAGES_DIR / category.lower(), max_images=100)
+                    print(f"✅ [Detection] Saved blemish data for {image_info['filename']}")
                         
                 except Exception as e:
-                    print(f"Error running blemish detection on {image_path}: {e}")
+                    print(f"❌ [Detection] Error running blemish detection on {image_path}: {e}")
                     # Continue without blemish data if detection fails
                     if not image_info.get('metadata'):
                         image_info['metadata'] = {}
@@ -370,8 +418,12 @@ def get_detection_images(category):
                         'error': str(e),
                         'count': 0
                     }
+            else:
+                print(f"⏭️  [Detection] Skipping {image_info['filename']} - already has blemish data")
             
             images_with_blemishes.append(image_info)
+        
+        print(f"📤 [Detection] Returning {len(images_with_blemishes)} images for {category}")
         
         return jsonify({
             'category': category,
@@ -383,7 +435,7 @@ def get_detection_images(category):
 
 
 def _save_memory_images_to_disk(category: str):
-    """Save images from memory cache to disk before fetching"""
+    """Save ONLY top 3 images from memory cache to disk before fetching"""
     category_lower = category.lower()
     if category_lower not in category_images_memory_cache:
         return
@@ -392,8 +444,13 @@ def _save_memory_images_to_disk(category: str):
     if not memory_images:
         return
     
-    # Save each image from memory to disk
-    for detection in memory_images:
+    # Take ONLY top 3 from memory (latest first)
+    top_3_memory = memory_images[-3:] if len(memory_images) >= 3 else memory_images
+    
+    print(f"💾 [Main] Saving top {len(top_3_memory)} images from memory to disk for {category_lower}")
+    
+    # Save only top 3 images from memory to disk
+    for detection in top_3_memory:
         if 'cropped_image' in detection and detection['cropped_image'] is not None:
             # Save to disk as processed image
             save_processed_image(
@@ -414,20 +471,43 @@ def get_detection_images_stream(category):
             # Send initial connection message
             yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE connection established'})}\n\n"
             
-            # FIRST: Save images from memory to disk before fetching
-            _save_memory_images_to_disk(category)
-            
+            # Check if there are already processed images on disk
             images = get_category_images(category.lower())
-            # Only get processed images (images stay in memory until processed)
             detection_images = [img for img in images if img['filename'].startswith('processed_')]
             
-            # Limit to top 3 images for blemish processing
+            # If NO processed images on disk, take top 3 from memory and save them
+            if not detection_images:
+                print(f"📸 [Detection Stream] No processed images on disk for {category}, checking memory...")
+                category_lower = category.lower()
+                
+                if category_lower in category_images_memory_cache and category_images_memory_cache[category_lower]:
+                    memory_images = category_images_memory_cache[category_lower]
+                    # Take ONLY top 3 from memory (latest first)
+                    top_3_memory = memory_images[-3:] if len(memory_images) >= 3 else memory_images
+                    
+                    print(f"💾 [Detection Stream] Saving top {len(top_3_memory)} images from memory to disk for {category}")
+                    
+                    for detection in top_3_memory:
+                        if 'cropped_image' in detection and detection['cropped_image'] is not None:
+                            save_processed_image(
+                                detection['cropped_image'],
+                                category_lower,
+                                detection.get('metadata')
+                            )
+                    
+                    # Refresh the list after saving
+                    images = get_category_images(category_lower)
+                    detection_images = [img for img in images if img['filename'].startswith('processed_')]
+                else:
+                    print(f"⚠️  [Detection Stream] No images in memory for {category}")
+                yield f"data: {json.dumps({'type': 'complete', 'progress': 100, 'images': []})}\n\n"
+                return
+            
+            # Limit to ONLY top 3 latest images (newest first)
             detection_images = detection_images[:3]
             total_images = len(detection_images)
             
-            if total_images == 0:
-                yield f"data: {json.dumps({'type': 'complete', 'progress': 100, 'images': []})}\n\n"
-                return
+            print(f"📸 [Detection Stream] Processing ONLY top {total_images} images for {category}")
             
             images_with_blemishes = []
             for idx, image_info in enumerate(detection_images):
@@ -438,7 +518,14 @@ def get_detection_images_stream(category):
                 yield f"data: {json.dumps({'type': 'progress', 'progress': progress, 'current': idx + 1, 'total': total_images, 'filename': image_info['filename']})}\n\n"
                 
                 # Check if blemish detection already exists in metadata
-                if not (image_info.get('metadata') and 'blemishes' in image_info['metadata']):
+                has_blemish_data = (
+                    image_info.get('metadata') and 
+                    'blemishes' in image_info['metadata'] and
+                    image_info['metadata']['blemishes'].get('bboxes') is not None
+                )
+                
+                if not has_blemish_data:
+                    print(f"🔍 [Detection Stream] Running blemish detection on {image_info['filename']} (no existing data)")
                     # Run blemish detection
                     try:
                         blemish_result = detect_blemishes(str(image_path))
@@ -458,11 +545,10 @@ def get_detection_images_stream(category):
                         with open(metadata_path, 'w') as f:
                             json.dump(image_info['metadata'], f, indent=2, default=str)
                         
-                        # Image is already processed (starts with processed_), cleanup old images
-                        keep_latest_images(DETECTION_IMAGES_DIR / category.lower(), max_images=100)
+                        print(f"✅ [Detection Stream] Saved blemish data for {image_info['filename']}")
                         
                     except Exception as e:
-                        print(f"Error running blemish detection on {image_path}: {e}")
+                        print(f"❌ [Detection Stream] Error running blemish detection on {image_path}: {e}")
                         # Continue without blemish data if detection fails
                         if not image_info.get('metadata'):
                             image_info['metadata'] = {}
@@ -470,6 +556,8 @@ def get_detection_images_stream(category):
                             'error': str(e),
                             'count': 0
                         }
+                else:
+                    print(f"⏭️  [Detection Stream] Skipping {image_info['filename']} - already has blemish data")
                 
                 images_with_blemishes.append(image_info)
                 

@@ -398,12 +398,18 @@ def get_aggregate_metrics():
         store_id = request.args.get('store_id', type=int)
         user_id = request.args.get('user_id', type=int)
         
-        # Debug logging
-        print(f"🔍 [Analytics] Computing aggregate metrics - store_id: {store_id}, user_id: {user_id}")
+        # Debug logging (wrapped in try-except to prevent I/O errors)
+        try:
+            print(f"🔍 [Analytics] Computing aggregate metrics - store_id: {store_id}, user_id: {user_id}")
+        except:
+            pass
         
         metrics = compute_aggregate_impact(store_id=store_id, user_id=user_id)
         
-        print(f"🔍 [Analytics] Metrics computed: {metrics}")
+        try:
+            print(f"🔍 [Analytics] Metrics computed: {metrics}")
+        except:
+            pass
         
         # Add human-readable conversions
         metrics['waste_saved_lbs'] = round(metrics.get('waste_saved_kg', metrics['units_saved']) * 2.20462, 2)
@@ -414,7 +420,10 @@ def get_aggregate_metrics():
     
     except Exception as e:
         import traceback
-        print(f"❌ [Analytics] Error computing aggregate metrics: {e}")
-        traceback.print_exc()
+        try:
+            print(f"❌ [Analytics] Error computing aggregate metrics: {e}")
+            traceback.print_exc()
+        except:
+            pass
         return jsonify({'error': str(e)}), 500
 

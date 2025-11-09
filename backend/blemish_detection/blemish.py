@@ -52,6 +52,7 @@ def detect_blemishes(
     
     # Load image
     image = Image.open(image_path)
+    print(f"🔍 [Gemini] Starting blemish detection for image: {image_path}")
     
     # Convert to RGB if necessary (for PNG with transparency)
     if image.mode != "RGB":
@@ -78,17 +79,19 @@ def detect_blemishes(
         thinking_config=types.ThinkingConfig(
             thinking_budget=0,  # Disable thinking for faster, more direct responses
         ),
-        image_config=types.ImageConfig(
-            image_size="1K",
-        ),
+        # image_config=types.ImageConfig(
+        #     image_size="1K",
+        # ),
     )
     
     try:
+        print(f"🤖 [Gemini] Calling Gemini API (model: {model_name})...")
         response = client.models.generate_content(
             model=model_name,
             contents=contents,
             config=generate_content_config,
         )
+        print(f"✅ [Gemini] Received response from Gemini API")
         
         # Extract JSON from response
         response_text = response.text.strip()
@@ -100,6 +103,7 @@ def detect_blemishes(
             response_text = response_text.split("```")[1].split("```")[0].strip()
         
         # Parse JSON response
+        print(f"📊 [Gemini] Parsing response JSON...")
         annotations = json.loads(response_text)
         
         # Extract only bboxes and labels (no masks)
@@ -113,6 +117,8 @@ def detect_blemishes(
                 })
                 labels.append(ann["label"])
         
+        print(f"✨ [Gemini] Processing complete! Found {len(bboxes)} blemish(es)")
+        
         return {
             "image": image,
             "bboxes": bboxes,
@@ -120,6 +126,7 @@ def detect_blemishes(
         }
     
     except Exception as e:
+        print(f"❌ [Gemini] Error during processing: {str(e)}")
         raise RuntimeError(f"Error calling Gemini API: {str(e)}") from e
 
 

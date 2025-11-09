@@ -13,7 +13,8 @@ import json
 
 
 # Base directory for storing detection images
-DETECTION_IMAGES_DIR = Path("./detection_images")
+# Use absolute path relative to this file's location
+DETECTION_IMAGES_DIR = Path(__file__).parent.parent / "detection_images"
 
 
 def ensure_category_directory(category: str) -> Path:
@@ -167,9 +168,14 @@ def get_category_images(category: str) -> List[dict]:
     """
     try:
         category_dir = ensure_category_directory(category)
+        print(f"\n📂 [get_category_images] Looking for images in: {category_dir}")
+        print(f"    Directory exists: {category_dir.exists()}")
         
         images = []
         image_files = list(category_dir.glob("*.jpg"))
+        print(f"    Found {len(image_files)} .jpg files")
+        if image_files:
+            print(f"    Filenames: {[f.name for f in image_files[:5]]}")
         
         # Sort by modification time (newest first)
         image_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)

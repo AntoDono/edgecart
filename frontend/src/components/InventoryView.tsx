@@ -515,7 +515,10 @@ const InventoryView = () => {
           // EventSource automatically parses "data: {...}" format
           const data = JSON.parse(event.data);
           
-          if (data.type === 'start') {
+          if (data.type === 'connected') {
+            // Connection established, ready to receive data
+            console.log('SSE connection established');
+          } else if (data.type === 'start') {
             setAnalyzingMessage(`Analyzing ${data.total} items...`);
           } else if (data.type === 'progress') {
             setAnalyzingProgress(data.progress);
