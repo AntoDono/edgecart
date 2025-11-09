@@ -1482,9 +1482,13 @@ def camera_proxy_websocket(ws):
                     return
                 
                 # Use the same processing logic as stream_video_websocket
-                # This is a simplified version - you can extract the full logic if needed
+                # Suppress YOLO verbose output
                 result = detect(frame, allowed_classes=['apple', 'banana', 'orange'], save=False, verbose=False)
                 detections = result['detections']
+                
+                if len(frontend_video_connections) == 0:
+                    # No frontend connections, skip processing
+                    return
                 
                 # Process detections with freshness scores
                 processed_detections = []
@@ -1533,22 +1537,31 @@ def camera_proxy_websocket(ws):
                     frontend_video_connections.discard(conn)
                 
                 # Broadcast to all frontend connections
+                num_connections = len(frontend_video_connections)
+                if num_connections > 0:
+                    print(f"📤 Broadcasting to {num_connections} frontend connection(s) - {len(clean_detections)} detections, frame size: {len(frame_bytes)} bytes")
+                
                 for frontend_ws in list(frontend_video_connections):
                     try:
-                        # Send metadata
-                        frontend_ws.send(json.dumps({
+                        # Send metadata (JSON string)
+                        metadata_json = json.dumps({
                             'type': 'frame_meta',
                             'detections': clean_detections,
                             'fps': 0.0,  # Could calculate from proxy if needed
                             'frame_size': len(frame_bytes),
                             'timestamp': datetime.utcnow().isoformat()
-                        }))
-                        # Send binary frame
+                        })
+                        frontend_ws.send(metadata_json)
+                        
+                        # Send binary frame - Flask-Sock should handle bytes
+                        # If this fails, we might need to base64 encode it
                         frontend_ws.send(frame_bytes)
                     except Exception as e:
                         # Remove dead connection
                         frontend_video_connections.discard(frontend_ws)
                         print(f"⚠️ Removed dead frontend connection: {e}")
+                        import traceback
+                        traceback.print_exc()
                 
             except Exception as e:
                 print(f"❌ Error processing proxy frame: {e}")
@@ -1573,11 +1586,15 @@ def camera_proxy_websocket(ws):
                         # Process frame in background thread
                         frame_data = message.get('data')
                         if frame_data:
+                            frame_id = message.get('frame_id', 'unknown')
+                            print(f"📥 Received frame {frame_id} from proxy ({len(frame_data)} chars base64)")
                             threading.Thread(
                                 target=process_proxy_frame,
                                 args=(frame_data,),
                                 daemon=True
                             ).start()
+                        else:
+                            print("⚠️ Received frame message but no data field")
                     
                     elif msg_type == 'proxy_connected':
                         # Acknowledge proxy connection
