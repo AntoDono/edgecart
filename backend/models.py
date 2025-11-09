@@ -47,6 +47,8 @@ class FruitInventory(db.Model):
     location_in_store = db.Column(db.String(100))  # Aisle/Section
     original_price = db.Column(db.Float, nullable=False)
     current_price = db.Column(db.Float, nullable=False)
+    thumbnail_path = db.Column(db.String(500))  # Path to thumbnail image
+    actual_freshness_scores = db.Column(db.Text)  # JSON array of actual freshness scores from blemish detection
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -56,6 +58,7 @@ class FruitInventory(db.Model):
     purchases = db.relationship('PurchaseHistory', back_populates='inventory', cascade='all, delete-orphan')
     recommendations = db.relationship('Recommendation', back_populates='inventory', cascade='all, delete-orphan')
     waste_logs = db.relationship('WasteLog', back_populates='inventory', cascade='all, delete-orphan')
+    quantity_changes = db.relationship('QuantityChangeLog', back_populates='inventory', cascade='all, delete-orphan')
     
     def to_dict(self, include_freshness=True):
         data = {
@@ -70,6 +73,9 @@ class FruitInventory(db.Model):
             'original_price': self.original_price,
             'current_price': self.current_price,
             'discount_percentage': round(((self.original_price - self.current_price) / self.original_price * 100), 2) if self.original_price > 0 else 0,
+            'thumbnail_path': self.thumbnail_path,
+            'actual_freshness_scores': self.get_actual_freshness_scores(),
+            'actual_freshness_avg': self.get_actual_freshness_avg(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -78,6 +84,32 @@ class FruitInventory(db.Model):
             data['freshness'] = self.freshness.to_dict()
             
         return data
+    
+    def get_actual_freshness_scores(self):
+        """Parse actual_freshness_scores JSON"""
+        if self.actual_freshness_scores:
+            try:
+                return json.loads(self.actual_freshness_scores)
+            except:
+                return []
+        return []
+    
+    def set_actual_freshness_scores(self, scores_list):
+        """Set actual_freshness_scores from list"""
+        self.actual_freshness_scores = json.dumps(scores_list)
+    
+    def add_actual_freshness_score(self, score: float):
+        """Add a new actual freshness score to the list"""
+        scores = self.get_actual_freshness_scores()
+        scores.append(score)
+        self.set_actual_freshness_scores(scores)
+    
+    def get_actual_freshness_avg(self):
+        """Get average of actual freshness scores, or None if no scores"""
+        scores = self.get_actual_freshness_scores()
+        if not scores:
+            return None
+        return round(sum(scores) / len(scores), 2)
 
 
 class FreshnessStatus(db.Model):
@@ -90,7 +122,7 @@ class FreshnessStatus(db.Model):
     predicted_expiry_date = db.Column(db.DateTime)
     confidence_level = db.Column(db.Float)  # 0-1 scale
     discount_percentage = db.Column(db.Float, default=0)
-    status = db.Column(db.String(50), default='fresh')  # fresh, warning, critical, expired
+    status = db.Column(db.String(50), default='fresh')  # fresh, ripe, clearance
     last_checked = db.Column(db.DateTime, default=datetime.utcnow)
     image_url = db.Column(db.String(500))
     notes = db.Column(db.Text)
@@ -139,14 +171,12 @@ class FreshnessStatus(db.Model):
     
     def update_status(self):
         """Update status based on freshness score (0-1.0 scale)"""
-        if self.freshness_score >= 0.7:
+        if self.freshness_score >= 0.6:
             self.status = 'fresh'
-        elif self.freshness_score >= 0.4:
-            self.status = 'warning'
-        elif self.freshness_score >= 0.1:
-            self.status = 'critical'
+        elif self.freshness_score >= 0.2:
+            self.status = 'ripe'
         else:
-            self.status = 'expired'
+            self.status = 'clearance'
 
 
 class Customer(db.Model):
@@ -274,6 +304,37 @@ class Recommendation(db.Model):
         self.reason = json.dumps(reason_dict)
 
 
+class QuantityChangeLog(db.Model):
+    """Track all quantity changes for inventory items"""
+    __tablename__ = 'quantity_change_log'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    inventory_id = db.Column(db.Integer, db.ForeignKey('fruit_inventory.id'), nullable=False)
+    fruit_type = db.Column(db.String(100), nullable=False)  # Store fruit_type for historical tracking
+    old_quantity = db.Column(db.Integer, nullable=False)
+    new_quantity = db.Column(db.Integer, nullable=False)
+    delta = db.Column(db.Integer, nullable=False)  # new_quantity - old_quantity
+    change_type = db.Column(db.String(20), nullable=False)  # 'increase' or 'decrease'
+    freshness_score = db.Column(db.Float)  # Freshness at time of change
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    inventory = db.relationship('FruitInventory', back_populates='quantity_changes')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'inventory_id': self.inventory_id,
+            'fruit_type': self.fruit_type,
+            'old_quantity': self.old_quantity,
+            'new_quantity': self.new_quantity,
+            'delta': self.delta,
+            'change_type': self.change_type,
+            'freshness_score': self.freshness_score,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None
+        }
+
+
 class WasteLog(db.Model):
     """Track wasted inventory for analytics"""
     __tablename__ = 'waste_log'
@@ -298,4 +359,91 @@ class WasteLog(db.Model):
             'logged_at': self.logged_at.isoformat() if self.logged_at else None,
             'fruit_type': self.inventory.fruit_type if self.inventory else None
         }
+
+
+# --- Models for Personalized Buy-Probability + Markov Estimator ---
+
+class PriceCurve(db.Model):
+    """Population price-response curves per category"""
+    __tablename__ = 'price_curves'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(80), unique=True, nullable=False)  # e.g., 'apple', 'banana'
+    x_discount_bins = db.Column(db.JSON, nullable=False)  # List of discount percentages [0, 10, 25, 50, 75]
+    y_pbuy = db.Column(db.JSON, nullable=False)  # List of buy probabilities [0.05, 0.15, 0.45, 0.75, 0.90]
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'category': self.category,
+            'x_discount_bins': self.x_discount_bins,
+            'y_pbuy': self.y_pbuy
+        }
+    
+    def __repr__(self):
+        return f"<PriceCurve {self.category}>"
+
+
+class UserDiscountStat(db.Model):
+    """User-specific discount acceptance statistics"""
+    __tablename__ = 'user_discount_stats'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
+    product_name = db.Column(db.String(80), nullable=False)  # e.g., 'apple', 'banana'
+    bin_low = db.Column(db.Float, nullable=False)  # Lower bound of discount bin
+    bin_high = db.Column(db.Float, nullable=False)  # Upper bound of discount bin
+    trials = db.Column(db.Integer, default=0, nullable=False)  # Number of times user saw this discount
+    buys = db.Column(db.Integer, default=0, nullable=False)  # Number of times user bought at this discount
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    customer = db.relationship('Customer', backref=db.backref('discount_stats', lazy=True))
+    
+    # Unique constraint: one stat per user/product/bin combination
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'product_name', 'bin_low', 'bin_high', name='_user_product_bin_uc'),
+    )
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'product_name': self.product_name,
+            'bin_low': self.bin_low,
+            'bin_high': self.bin_high,
+            'trials': self.trials,
+            'buys': self.buys,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+        }
+    
+    def __repr__(self):
+        return f"<UserDiscountStat User:{self.user_id} Product:{self.product_name} Bin:[{self.bin_low}-{self.bin_high}]>"
+
+
+class ProductLCA(db.Model):
+    """Product lifecycle assessment data for CO2e calculations"""
+    __tablename__ = 'product_lca'
+    
+    product_name = db.Column(db.String(80), primary_key=True)  # e.g., 'apple', 'banana'
+    mass_kg = db.Column(db.Float, nullable=False)  # Average mass per unit in kg
+    ef_prod_kgco2e_perkg = db.Column(db.Float, nullable=False)  # Production emission factor (kg CO2e per kg)
+    ef_disposal_kgco2e_perunit = db.Column(db.Float, nullable=False)  # Disposal emission factor (kg CO2e per unit)
+    displacement = db.Column(db.Float, nullable=False, default=1.0)  # Displacement factor (0-1)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'product_name': self.product_name,
+            'mass_kg': self.mass_kg,
+            'ef_prod_kgco2e_perkg': self.ef_prod_kgco2e_perkg,
+            'ef_disposal_kgco2e_perunit': self.ef_disposal_kgco2e_perunit,
+            'displacement': self.displacement
+        }
+    
+    def __repr__(self):
+        return f"<ProductLCA {self.product_name}>"
 

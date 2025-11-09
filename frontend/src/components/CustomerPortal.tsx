@@ -695,9 +695,8 @@ const CustomerPortalContent = () => {
   const getFreshnessLabel = (status: string) => {
     const labels: { [key: string]: string } = {
       'fresh': 'Fresh',
-      'warning': 'Warning',
-      'critical': 'Critical',
-      'expired': 'Expired'
+      'ripe': 'Ripe',
+      'clearance': 'Clearance'
     };
     return labels[status] || status;
   };
@@ -1189,7 +1188,15 @@ const CustomerPortalContent = () => {
                         }}
                       ></div>
                       <span className="freshness-label">
-                        {getFreshnessLabel(rec.item.freshness.status)} - {(rec.item.freshness.freshness_score || 0).toFixed(0)}%
+                        {rec.item.freshness?.status === 'clearance' ? (
+                          <>
+                            {getFreshnessLabel(rec.item.freshness.status)} - {rec.item.discount_percentage?.toFixed(0) || 0}% OFF
+                          </>
+                        ) : (
+                          <>
+                            {getFreshnessLabel(rec.item.freshness?.status || '')} - {(rec.item.freshness?.freshness_score || 0).toFixed(0)}%
+                          </>
+                        )}
                       </span>
                     </div>
                   )}
