@@ -264,6 +264,124 @@ def recompute_lot_metrics():
         return jsonify({'error': str(e)}), 500
 
 
+@analytics_bp.route('/v1/metrics/detailed', methods=['GET'])
+def get_detailed_metrics():
+    """
+    Get detailed impact metrics with per-item breakdown and calculation details.
+    
+    Query params:
+    - store_id: Optional store ID to filter by
+    - user_id: Optional user ID (uses first customer if not provided)
+    """
+    if not MARKOV_ESTIMATOR_AVAILABLE:
+        return jsonify({'error': 'Markov estimator module not available'}), 503
+    
+    try:
+        store_id = request.args.get('store_id', type=int)
+        user_id = request.args.get('user_id', type=int)
+        
+        # Get aggregate metrics
+        metrics = compute_aggregate_impact(store_id=store_id, user_id=user_id)
+        
+        # Get per-item breakdown
+        from models import FruitInventory, Customer
+        from utils.markov_waste_estimator import (
+            estimate_units_saved,
+            estimate_co2e_saved,
+            estimate_additional_revenue_generated
+        )
+        
+        # Default parameters
+        baseline_params = {"dmax": 0.0, "alpha": 1.0}
+        dynamic_params = {"dmax": 0.75, "alpha": 1.5}
+        
+        # Get user_id
+        if user_id is None:
+            default_customer = Customer.query.first()
+            if not default_customer:
+                return jsonify({'error': 'No customer found in database'}), 400
+            user_id = default_customer.id
+        
+        # Query inventory
+        query = FruitInventory.query.filter(FruitInventory.quantity > 0)
+        if store_id:
+            query = query.filter(FruitInventory.store_id == store_id)
+        
+        inventory_items = query.all()
+        
+        item_breakdown = []
+        for item in inventory_items:
+            try:
+                units = estimate_units_saved(
+                    item.id,
+                    baseline_params,
+                    dynamic_params,
+                    user_id
+                )
+                
+                if units > 0:
+                    co2e = estimate_co2e_saved(units, item.fruit_type)
+                    revenue = estimate_additional_revenue_generated(
+                        units,
+                        item.fruit_type,
+                        item.current_price if item.current_price > 0 else item.original_price
+                    )
+                    
+                    # Get freshness score
+                    freshness_score = None
+                    if item.freshness:
+                        freshness_score = item.freshness.freshness_score
+                        if freshness_score > 1.0:
+                            freshness_score = freshness_score / 100.0
+                    
+                    item_breakdown.append({
+                        'inventory_id': item.id,
+                        'fruit_type': item.fruit_type,
+                        'quantity': item.quantity,
+                        'freshness_score': freshness_score,
+                        'units_saved': round(units, 2),
+                        'co2e_saved': round(co2e, 2),
+                        'revenue_generated': round(revenue, 2)
+                    })
+            except Exception as e:
+                print(f"Error processing item {item.id} for detailed analytics: {e}")
+                continue
+        
+        # Add human-readable conversions
+        metrics['waste_saved_lbs'] = round(metrics.get('waste_saved_kg', metrics['units_saved']) * 2.20462, 2)
+        metrics['co2e_saved_lbs'] = round(metrics['co2e_saved'] * 2.20462, 2)
+        metrics['co2e_saved_tons'] = round(metrics['co2e_saved'] / 1000, 3)
+        
+        # Add detailed information
+        result = {
+            **metrics,
+            'item_breakdown': item_breakdown,
+            'calculations': {
+                'method': 'Markov Chain Model with Personalized Buy-Probability',
+                'baseline_policy': baseline_params,
+                'dynamic_policy': dynamic_params,
+                'user_id': user_id,
+                'total_items_analyzed': len(inventory_items),
+                'items_contributing': len(item_breakdown)
+            },
+            'assumptions': {
+                'baseline_policy_description': 'No discount policy - items sold at full price',
+                'dynamic_policy_description': 'Dynamic pricing based on freshness - up to 75% discount',
+                'markov_chain_buckets': 48,
+                'time_per_bucket_hours': 1.0,
+                'note': 'Calculations compare probability of sale under dynamic vs baseline pricing'
+            }
+        }
+        
+        return jsonify(result), 200
+    
+    except Exception as e:
+        import traceback
+        print(f"❌ [Analytics] Error computing detailed metrics: {e}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @analytics_bp.route('/v1/metrics/aggregate', methods=['GET'])
 def get_aggregate_metrics():
     """
@@ -280,7 +398,12 @@ def get_aggregate_metrics():
         store_id = request.args.get('store_id', type=int)
         user_id = request.args.get('user_id', type=int)
         
+        # Debug logging
+        print(f"🔍 [Analytics] Computing aggregate metrics - store_id: {store_id}, user_id: {user_id}")
+        
         metrics = compute_aggregate_impact(store_id=store_id, user_id=user_id)
+        
+        print(f"🔍 [Analytics] Metrics computed: {metrics}")
         
         # Add human-readable conversions
         metrics['waste_saved_lbs'] = round(metrics.get('waste_saved_kg', metrics['units_saved']) * 2.20462, 2)
@@ -290,5 +413,8 @@ def get_aggregate_metrics():
         return jsonify(metrics), 200
     
     except Exception as e:
+        import traceback
+        print(f"❌ [Analytics] Error computing aggregate metrics: {e}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 

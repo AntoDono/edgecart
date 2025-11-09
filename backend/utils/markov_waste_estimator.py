@@ -268,7 +268,13 @@ def estimate_units_saved(
     )
     
     # Units saved = quantity * (probability difference)
-    return max(0.0, inventory_item.quantity * (ps_dyn - ps_base))
+    units_saved = max(0.0, inventory_item.quantity * (ps_dyn - ps_base))
+    
+    # Debug logging for items with zero units saved
+    if units_saved == 0.0 and inventory_item.quantity > 0:
+        print(f"  ⚠️ Item {lot_id} ({product_name}): qty={inventory_item.quantity}, freshness={current_freshness:.3f}, ps_dyn={ps_dyn:.3f}, ps_base={ps_base:.3f}, diff={ps_dyn-ps_base:.3f}")
+    
+    return units_saved
 
 
 def estimate_co2e_saved(units_saved: float, product_name: str) -> float:
@@ -338,7 +344,8 @@ def compute_aggregate_impact(
         Dictionary with 'units_saved', 'co2e_saved', 'revenue_generated'
     """
     if not MODELS_AVAILABLE:
-        return {'units_saved': 0.0, 'co2e_saved': 0.0, 'revenue_generated': 0.0}
+        print("⚠️ [Markov Estimator] MODELS_AVAILABLE is False")
+        return {'units_saved': 0.0, 'co2e_saved': 0.0, 'revenue_generated': 0.0, 'waste_saved_kg': 0.0}
     
     # Default parameters
     if baseline_params is None:
@@ -350,8 +357,10 @@ def compute_aggregate_impact(
     if user_id is None:
         default_customer = Customer.query.first()
         if not default_customer:
-            return {'units_saved': 0.0, 'co2e_saved': 0.0, 'revenue_generated': 0.0}
+            print("⚠️ [Markov Estimator] No customer found in database")
+            return {'units_saved': 0.0, 'co2e_saved': 0.0, 'revenue_generated': 0.0, 'waste_saved_kg': 0.0}
         user_id = default_customer.id
+        print(f"✅ [Markov Estimator] Using customer ID: {user_id}")
     
     # Query inventory
     query = FruitInventory.query.filter(FruitInventory.quantity > 0)
@@ -359,45 +368,67 @@ def compute_aggregate_impact(
         query = query.filter(FruitInventory.store_id == store_id)
     
     inventory_items = query.all()
+    print(f"🔍 [Markov Estimator] Found {len(inventory_items)} inventory items with quantity > 0")
+    
+    if len(inventory_items) == 0:
+        print("⚠️ [Markov Estimator] No inventory items found")
+        return {'units_saved': 0.0, 'co2e_saved': 0.0, 'revenue_generated': 0.0, 'waste_saved_kg': 0.0}
     
     total_units_saved = 0.0
     total_co2e_saved = 0.0
     total_revenue = 0.0
     total_waste_saved_kg = 0.0
     
-    for item in inventory_items:
-        units = estimate_units_saved(
-            item.id,
-            baseline_params,
-            dynamic_params,
-            user_id
-        )
-        
-        if units > 0:
-            co2e = estimate_co2e_saved(units, item.fruit_type)
-            revenue = estimate_additional_revenue_generated(
-                units,
-                item.fruit_type,
-                item.current_price if item.current_price > 0 else item.original_price
-            )
-            
-            # Convert units to weight (kg) for waste saved
-            try:
-                from utils.waste_impact import calculate_weight_from_quantity
-                weight_kg = calculate_weight_from_quantity(item.fruit_type, units)
-            except:
-                # Fallback: assume average 0.15 kg per unit
-                weight_kg = units * 0.15
-            
-            total_units_saved += units
-            total_co2e_saved += co2e
-            total_revenue += revenue
-            total_waste_saved_kg += weight_kg
+    items_processed = 0
+    items_with_units = 0
     
-    return {
+    for item in inventory_items:
+        try:
+            units = estimate_units_saved(
+                item.id,
+                baseline_params,
+                dynamic_params,
+                user_id
+            )
+            items_processed += 1
+            
+            if units > 0:
+                items_with_units += 1
+                co2e = estimate_co2e_saved(units, item.fruit_type)
+                revenue = estimate_additional_revenue_generated(
+                    units,
+                    item.fruit_type,
+                    item.current_price if item.current_price > 0 else item.original_price
+                )
+                
+                # Convert units to weight (kg) for waste saved
+                try:
+                    from utils.waste_impact import calculate_weight_from_quantity
+                    weight_kg = calculate_weight_from_quantity(item.fruit_type, units)
+                except:
+                    # Fallback: assume average 0.15 kg per unit
+                    weight_kg = units * 0.15
+                
+                total_units_saved += units
+                total_co2e_saved += co2e
+                total_revenue += revenue
+                total_waste_saved_kg += weight_kg
+        except Exception as e:
+            print(f"⚠️ [Markov Estimator] Error processing item {item.id} ({item.fruit_type}): {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+    
+    print(f"✅ [Markov Estimator] Processed {items_processed} items, {items_with_units} contributed to metrics")
+    
+    result = {
         'units_saved': round(total_units_saved, 2),
         'waste_saved_kg': round(total_waste_saved_kg, 2),
         'co2e_saved': round(total_co2e_saved, 2),
         'revenue_generated': round(total_revenue, 2)
     }
+    
+    print(f"📊 [Markov Estimator] Final metrics: {result}")
+    
+    return result
 

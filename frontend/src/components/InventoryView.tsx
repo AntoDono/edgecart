@@ -94,6 +94,9 @@ const InventoryView = () => {
   const [historyData, setHistoryData] = useState<QuantityChange[]>([]);
   const [historyStatistics, setHistoryStatistics] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showDetailedAnalytics, setShowDetailedAnalytics] = useState(false);
+  const [detailedAnalytics, setDetailedAnalytics] = useState<any>(null);
+  const [loadingDetailedAnalytics, setLoadingDetailedAnalytics] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
     const eventSourceRef = useRef<EventSource | null>(null);
 
@@ -169,35 +172,36 @@ const InventoryView = () => {
   const [statsLoading, setStatsLoading] = useState<boolean>(true);
   const [statsError, setStatsError] = useState<string | null>(null);
 
+  const fetchImpactStats = async () => {
+    setStatsLoading(true);
+    setStatsError(null);
+    try {
+      const response = await fetch(`${config.apiUrl}/api/analytics/v1/metrics/aggregate`);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📊 Impact stats fetched:', data);
+        
+        // Update state with new values (even if 0)
+        setFoodWasteSaved(data.waste_saved_kg || data.units_saved || 0);
+        setCo2Saved(data.co2e_saved || data.co2_saved_kg || 0);
+        setAdditionalRevenue(data.revenue_generated || data.additional_revenue_generated || 0);
+      } else {
+        const errorText = await response.text();
+        console.error('❌ Failed to fetch impact metrics:', response.status, errorText);
+        setStatsError(errorText);
+        // Don't clear values on error - keep showing last known values
+      }
+    } catch (err) {
+      console.error('❌ Error fetching impact metrics:', err);
+      setStatsError(String(err));
+      // Don't clear values on error - keep showing last known values
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
   // Fetch impact statistics
   useEffect(() => {
-    const fetchImpactStats = async () => {
-      setStatsLoading(true);
-      setStatsError(null);
-      try {
-        const response = await fetch(`${config.apiUrl}/api/analytics/v1/metrics/aggregate`);
-        if (response.ok) {
-          const data = await response.json();
-          setFoodWasteSaved(data.waste_saved_kg || data.units_saved || 0);
-          setCo2Saved(data.co2e_saved || data.co2_saved_kg || 0);
-          setAdditionalRevenue(data.revenue_generated || data.additional_revenue_generated || 0);
-        } else {
-          // Silently fail - don't set error, just don't show the section
-          setFoodWasteSaved(null);
-          setCo2Saved(null);
-          setAdditionalRevenue(null);
-        }
-      } catch (err) {
-        // Silently fail - don't show error, just don't display the section
-        console.error('Error fetching impact metrics:', err);
-        setFoodWasteSaved(null);
-        setCo2Saved(null);
-        setAdditionalRevenue(null);
-      } finally {
-        setStatsLoading(false);
-      }
-    };
-
     fetchImpactStats();
     // Refresh stats every 30 seconds
     const interval = setInterval(fetchImpactStats, 30000);
@@ -445,6 +449,8 @@ const InventoryView = () => {
       
       // Refresh inventory to get updated scores
       fetchInventory();
+      // Also refresh impact stats since inventory changed
+      fetchImpactStats();
     } catch (error) {
       console.error('Error saving actual freshness score:', error);
     }
@@ -477,6 +483,7 @@ const InventoryView = () => {
             setIsAnalyzing(false);
             eventSource.close();
             fetchInventory();
+            fetchImpactStats(); // Refresh stats after analysis
           }, 1000);
         } else if (data.type === 'error') {
           console.error('Analysis error:', data.error);
@@ -496,6 +503,26 @@ const InventoryView = () => {
       setIsAnalyzing(false);
       eventSource.close();
     };
+  };
+
+  const fetchDetailedAnalytics = async () => {
+    setLoadingDetailedAnalytics(true);
+    try {
+      const response = await fetch(`${config.apiUrl}/api/analytics/v1/metrics/detailed`);
+      if (response.ok) {
+        const data = await response.json();
+        setDetailedAnalytics(data);
+      } else {
+        const errorText = await response.text();
+        console.error('Failed to fetch detailed analytics:', response.status, errorText);
+        setDetailedAnalytics({ error: errorText });
+      }
+    } catch (e) {
+      console.error('Failed to fetch detailed analytics:', e);
+      setDetailedAnalytics({ error: String(e) });
+    } finally {
+      setLoadingDetailedAnalytics(false);
+    }
   };
 
   const fetchHistory = async () => {
@@ -603,6 +630,7 @@ const InventoryView = () => {
       if (response.ok) {
         setShowCreateModal(false);
         fetchInventory();
+        fetchImpactStats(); // Refresh stats after creating item
       } else {
         const error = await response.json();
         alert(`Failed to create item: ${error.error || 'Unknown error'}`);
@@ -623,6 +651,7 @@ const InventoryView = () => {
       if (response.ok) {
         setEditingItem(null);
         fetchInventory();
+        fetchImpactStats(); // Refresh stats after updating item
       } else {
         const error = await response.json();
         alert(`Failed to update item: ${error.error || 'Unknown error'}`);
@@ -640,6 +669,7 @@ const InventoryView = () => {
       });
       if (response.ok) {
         fetchInventory();
+        fetchImpactStats(); // Refresh stats after deleting item
       } else {
         const error = await response.json();
         alert(`Failed to delete item: ${error.error || 'Unknown error'}`);
@@ -790,11 +820,62 @@ const InventoryView = () => {
     <div className="admin-dashboard inventory-view">
       <div className="admin-dashboard-header">
         <h1 className="admin-dashboard-title">INVENTORY MANAGEMENT</h1>
-        <div className="status-indicators">
+        <div className="status-indicators" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <span className={`status-badge ${isConnected ? 'connected' : 'disconnected'}`}>
             {isConnected ? 'CONNECTED' : 'DISCONNECTED'}
           </span>
-          <button className="control-btn" onClick={goBack} style={{ marginLeft: '1rem' }}>
+          
+          {/* Brief Impact Statistics */}
+          {!statsLoading && (foodWasteSaved !== null || co2Saved !== null || additionalRevenue !== null) && (
+            <div style={{ 
+              display: 'flex', 
+              gap: '1rem', 
+              alignItems: 'center',
+              padding: '0.5rem 1rem',
+              background: 'rgba(126, 202, 156, 0.1)',
+              borderRadius: '4px',
+              border: '1px solid rgba(126, 202, 156, 0.3)',
+              cursor: 'pointer'
+            }}
+            onClick={fetchImpactStats}
+            title="Click to refresh stats"
+            >
+              {foodWasteSaved !== null && (
+                <div style={{ fontSize: '0.85em', color: '#7ECA9C' }}>
+                  <span style={{ opacity: 0.7 }}>Waste Saved: </span>
+                  <strong>{foodWasteSaved.toFixed(1)} kg</strong>
+                </div>
+              )}
+              {co2Saved !== null && (
+                <div style={{ fontSize: '0.85em', color: '#7ECA9C' }}>
+                  <span style={{ opacity: 0.7 }}>CO₂ Saved: </span>
+                  <strong>{co2Saved.toFixed(1)} kg</strong>
+                </div>
+              )}
+              {additionalRevenue !== null && (
+                <div style={{ fontSize: '0.85em', color: '#7ECA9C' }}>
+                  <span style={{ opacity: 0.7 }}>Revenue: </span>
+                  <strong>${additionalRevenue.toFixed(0)}</strong>
+                </div>
+              )}
+              {statsError && (
+                <div style={{ fontSize: '0.75em', color: '#ff6b6b', opacity: 0.7 }}>
+                  (Update failed - click to retry)
+                </div>
+              )}
+            </div>
+          )}
+          {statsLoading && (
+            <div style={{ 
+              fontSize: '0.85em', 
+              color: '#999',
+              padding: '0.5rem 1rem'
+            }}>
+              Loading stats...
+            </div>
+          )}
+          
+          <button className="control-btn" onClick={goBack} style={{ marginLeft: '0' }}>
             BACK TO DASHBOARD
           </button>
         </div>
@@ -823,6 +904,18 @@ const InventoryView = () => {
                 }}
               >
                 {isAnalyzing ? 'ANALYZING...' : 'ANALYZE & OPTIMIZE'}
+              </button>
+              <button 
+                className="control-btn" 
+                onClick={() => {
+                  setShowDetailedAnalytics(true);
+                  fetchDetailedAnalytics();
+                }}
+                style={{ 
+                  background: '#4A90E2',
+                }}
+              >
+                VIEW IMPACT DETAILS
               </button>
               <button className="control-btn" onClick={handleOpenHistory}>
                 HISTORY
@@ -998,60 +1091,6 @@ const InventoryView = () => {
           </div>
         </div>
 
-        {/* Impact Statistics Panel - Only show if successfully loaded */}
-        {!statsLoading && !statsError && (foodWasteSaved !== null || co2Saved !== null || additionalRevenue !== null) && (
-          <div className="stats-panel" style={{ 
-            flex: 1, 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '15px',
-            minWidth: '250px'
-          }}>
-            <h2 className="section-title" style={{ marginBottom: '10px' }}>IMPACT STATISTICS</h2>
-            <div className="stat-box" style={{ 
-              background: '#1a1a1a', 
-              padding: '15px', 
-              borderRadius: '4px', 
-              border: '1px solid #7ECA9C',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '5px'
-            }}>
-              <h4 style={{ color: '#fff', margin: 0, fontSize: '0.9em', fontWeight: 'normal' }}>FOOD WASTE SAVED</h4>
-              <p style={{ color: '#7ECA9C', fontSize: '1.5em', margin: 0, fontWeight: 'bold' }}>
-                {foodWasteSaved !== null ? `${foodWasteSaved.toFixed(2)} kg` : 'N/A'}
-              </p>
-            </div>
-            <div className="stat-box" style={{ 
-              background: '#1a1a1a', 
-              padding: '15px', 
-              borderRadius: '4px', 
-              border: '1px solid #7ECA9C',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '5px'
-            }}>
-              <h4 style={{ color: '#fff', margin: 0, fontSize: '0.9em', fontWeight: 'normal' }}>CO₂ SAVED</h4>
-              <p style={{ color: '#7ECA9C', fontSize: '1.5em', margin: 0, fontWeight: 'bold' }}>
-                {co2Saved !== null ? `${co2Saved.toFixed(2)} kg` : 'N/A'}
-              </p>
-            </div>
-            <div className="stat-box" style={{ 
-              background: '#1a1a1a', 
-              padding: '15px', 
-              borderRadius: '4px', 
-              border: '1px solid #7ECA9C',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '5px'
-            }}>
-              <h4 style={{ color: '#fff', margin: 0, fontSize: '0.9em', fontWeight: 'normal' }}>ADDITIONAL REVENUE</h4>
-              <p style={{ color: '#7ECA9C', fontSize: '1.5em', margin: 0, fontWeight: 'bold' }}>
-                {additionalRevenue !== null ? `$${additionalRevenue.toFixed(2)}` : 'N/A'}
-              </p>
-            </div>
-          </div>
-        )}
 
         <div className="changes-log-section" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100vh' }}>
           {/* Quantity Changes Log - Top Half */}
@@ -1758,6 +1797,183 @@ const InventoryView = () => {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Detailed Analytics Modal */}
+      {showDetailedAnalytics && (
+        <div className="modal-overlay" onClick={() => setShowDetailedAnalytics(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '90vh', overflow: 'auto' }}>
+            <div className="modal-header">
+              <h2>DETAILED IMPACT ANALYTICS</h2>
+              <button className="modal-close" onClick={() => setShowDetailedAnalytics(false)}>×</button>
+            </div>
+            
+            {loadingDetailedAnalytics ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#7ECA9C' }}>
+                Loading detailed analytics...
+              </div>
+            ) : detailedAnalytics?.error ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#ff6b6b' }}>
+                Error loading analytics: {detailedAnalytics.error}
+              </div>
+            ) : detailedAnalytics ? (
+              <div style={{ padding: '1rem' }}>
+                {/* Summary Cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                  <div style={{ padding: '1.5rem', background: '#1a1a1a', borderRadius: '4px', border: '1px solid #7ECA9C' }}>
+                    <h3 style={{ color: '#7ECA9C', marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9em' }}>FOOD WASTE SAVED</h3>
+                    <p style={{ color: '#fff', fontSize: '2em', margin: 0, fontWeight: 'bold' }}>
+                      {detailedAnalytics.waste_saved_kg?.toFixed(2) || detailedAnalytics.units_saved?.toFixed(2) || '0.00'} kg
+                    </p>
+                    {detailedAnalytics.waste_saved_lbs && (
+                      <p style={{ color: '#999', fontSize: '0.9em', margin: '0.5rem 0 0 0' }}>
+                        ({detailedAnalytics.waste_saved_lbs.toFixed(2)} lbs)
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div style={{ padding: '1.5rem', background: '#1a1a1a', borderRadius: '4px', border: '1px solid #7ECA9C' }}>
+                    <h3 style={{ color: '#7ECA9C', marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9em' }}>CO₂ EQUIVALENT SAVED</h3>
+                    <p style={{ color: '#fff', fontSize: '2em', margin: 0, fontWeight: 'bold' }}>
+                      {detailedAnalytics.co2e_saved?.toFixed(2) || detailedAnalytics.co2_saved_kg?.toFixed(2) || '0.00'} kg
+                    </p>
+                    {detailedAnalytics.co2e_saved_tons && (
+                      <p style={{ color: '#999', fontSize: '0.9em', margin: '0.5rem 0 0 0' }}>
+                        ({detailedAnalytics.co2e_saved_tons.toFixed(3)} tons)
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div style={{ padding: '1.5rem', background: '#1a1a1a', borderRadius: '4px', border: '1px solid #7ECA9C' }}>
+                    <h3 style={{ color: '#7ECA9C', marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9em' }}>ADDITIONAL REVENUE</h3>
+                    <p style={{ color: '#fff', fontSize: '2em', margin: 0, fontWeight: 'bold' }}>
+                      ${detailedAnalytics.revenue_generated?.toFixed(2) || detailedAnalytics.additional_revenue_generated?.toFixed(2) || '0.00'}
+                    </p>
+                  </div>
+                  
+                  {detailedAnalytics.units_saved && (
+                    <div style={{ padding: '1.5rem', background: '#1a1a1a', borderRadius: '4px', border: '1px solid #7ECA9C' }}>
+                      <h3 style={{ color: '#7ECA9C', marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9em' }}>UNITS SAVED</h3>
+                      <p style={{ color: '#fff', fontSize: '2em', margin: 0, fontWeight: 'bold' }}>
+                        {detailedAnalytics.units_saved.toFixed(0)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Calculation Details */}
+                {detailedAnalytics.calculations && (
+                  <div style={{ marginBottom: '2rem' }}>
+                    <h3 style={{ color: '#7ECA9C', marginBottom: '1rem' }}>CALCULATION METHODOLOGY</h3>
+                    <div style={{ background: '#1a1a1a', padding: '1rem', borderRadius: '4px', border: '1px solid #333' }}>
+                      <div style={{ marginBottom: '1rem' }}>
+                        <strong style={{ color: '#fff' }}>Method:</strong> {detailedAnalytics.calculations.method || 'Markov Chain Model'}
+                      </div>
+                      {detailedAnalytics.calculations.baseline_policy && (
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <strong style={{ color: '#fff' }}>Baseline Policy:</strong>
+                          <pre style={{ 
+                            display: 'inline-block', 
+                            marginLeft: '0.5rem', 
+                            padding: '0.25rem 0.5rem', 
+                            background: '#0a0a0a', 
+                            borderRadius: '3px',
+                            fontSize: '0.85em',
+                            color: '#7ECA9C'
+                          }}>
+                            {JSON.stringify(detailedAnalytics.calculations.baseline_policy, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {detailedAnalytics.calculations.dynamic_policy && (
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <strong style={{ color: '#fff' }}>Dynamic Policy:</strong>
+                          <pre style={{ 
+                            display: 'inline-block', 
+                            marginLeft: '0.5rem', 
+                            padding: '0.25rem 0.5rem', 
+                            background: '#0a0a0a', 
+                            borderRadius: '3px',
+                            fontSize: '0.85em',
+                            color: '#7ECA9C'
+                          }}>
+                            {JSON.stringify(detailedAnalytics.calculations.dynamic_policy, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                      {detailedAnalytics.calculations.user_id && (
+                        <div style={{ marginBottom: '0.5rem', fontSize: '0.9em', color: '#999' }}>
+                          <strong>Customer ID used:</strong> {detailedAnalytics.calculations.user_id}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-Item Breakdown */}
+                {detailedAnalytics.item_breakdown && detailedAnalytics.item_breakdown.length > 0 && (
+                  <div>
+                    <h3 style={{ color: '#7ECA9C', marginBottom: '1rem' }}>PER-ITEM BREAKDOWN</h3>
+                    <div style={{ background: '#1a1a1a', borderRadius: '4px', border: '1px solid #333', overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#0a0a0a', borderBottom: '1px solid #333' }}>
+                            <th style={{ padding: '0.75rem', textAlign: 'left', color: '#7ECA9C', fontSize: '0.9em' }}>Item</th>
+                            <th style={{ padding: '0.75rem', textAlign: 'right', color: '#7ECA9C', fontSize: '0.9em' }}>Quantity</th>
+                            <th style={{ padding: '0.75rem', textAlign: 'right', color: '#7ECA9C', fontSize: '0.9em' }}>Freshness</th>
+                            <th style={{ padding: '0.75rem', textAlign: 'right', color: '#7ECA9C', fontSize: '0.9em' }}>Units Saved</th>
+                            <th style={{ padding: '0.75rem', textAlign: 'right', color: '#7ECA9C', fontSize: '0.9em' }}>CO₂ Saved</th>
+                            <th style={{ padding: '0.75rem', textAlign: 'right', color: '#7ECA9C', fontSize: '0.9em' }}>Revenue</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detailedAnalytics.item_breakdown.map((item: any, idx: number) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid #222' }}>
+                              <td style={{ padding: '0.75rem', color: '#fff' }}>{item.fruit_type || item.product_name}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#fff' }}>{item.quantity || '-'}</td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#fff' }}>
+                                {item.freshness_score !== undefined ? `${(item.freshness_score * 100).toFixed(1)}%` : '-'}
+                              </td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#7ECA9C' }}>
+                                {item.units_saved?.toFixed(2) || '0.00'}
+                              </td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#7ECA9C' }}>
+                                {item.co2e_saved?.toFixed(2) || '0.00'} kg
+                              </td>
+                              <td style={{ padding: '0.75rem', textAlign: 'right', color: '#7ECA9C' }}>
+                                ${item.revenue_generated?.toFixed(2) || '0.00'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Assumptions */}
+                {detailedAnalytics.assumptions && (
+                  <div style={{ marginTop: '2rem', padding: '1rem', background: '#1a1a1a', borderRadius: '4px', border: '1px solid #333' }}>
+                    <h4 style={{ color: '#7ECA9C', marginTop: 0 }}>ASSUMPTIONS & NOTES</h4>
+                    <pre style={{ 
+                      color: '#999', 
+                      fontSize: '0.85em', 
+                      whiteSpace: 'pre-wrap',
+                      fontFamily: 'inherit',
+                      margin: 0
+                    }}>
+                      {JSON.stringify(detailedAnalytics.assumptions, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#999' }}>
+                No detailed analytics available
               </div>
             )}
           </div>
