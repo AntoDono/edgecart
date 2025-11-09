@@ -47,6 +47,8 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 sock = Sock(app)  # Initialize WebSocket support
 PORT = os.getenv('PORT', 3000)
+# Camera mode: 'local' (use local camera) or 'proxy' (receive frames from proxy)
+CAMERA_MODE = os.getenv('CAMERA_MODE', 'local').lower()
 
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///edgecart.db')
@@ -944,13 +946,43 @@ def stream_video_websocket(ws):
         # Register this frontend connection for proxy broadcasting
         frontend_video_connections.add(ws)
         
+        # Check if we're in proxy mode
+        is_proxy_mode = CAMERA_MODE == 'proxy'
+        
         # Send welcome message
         ws.send(json.dumps({
             'type': 'connected',
             'message': 'Connected to video stream endpoint',
             'fresh_model_loaded': fresh_model is not None,
+            'camera_mode': CAMERA_MODE,
+            'proxy_mode': is_proxy_mode,
             'timestamp': datetime.utcnow().isoformat()
         }))
+        
+        # If proxy mode, don't try to open camera - just wait for frames from proxy
+        if is_proxy_mode:
+            print("📹 Proxy mode: Waiting for frames from camera proxy...")
+            ws.send(json.dumps({
+                'type': 'info',
+                'message': 'Proxy mode enabled - waiting for camera proxy to send frames'
+            }))
+            # Just keep connection alive - frames will come from /ws/camera_proxy endpoint
+            # Listen for ping/pong to keep connection alive
+            while True:
+                try:
+                    data = ws.receive()
+                    if data:
+                        try:
+                            message = json.loads(data)
+                            command = message.get('command')
+                            if command == 'ping':
+                                ws.send(json.dumps({'type': 'pong'}))
+                        except json.JSONDecodeError:
+                            pass
+                except Exception:
+                    # Connection closed
+                    break
+            return
         
         def process_frame():
             """Process frames from camera and send to client"""

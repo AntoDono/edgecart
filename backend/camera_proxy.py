@@ -74,17 +74,30 @@ class CameraProxy:
     def connect_camera(self):
         """Initialize camera connection"""
         if self.camera_index is None:
-            self.camera_index = get_best_camera_index()
-            print(f"📹 Auto-detected camera index: {self.camera_index}")
+            # Try to auto-detect camera
+            try:
+                self.camera_index = get_best_camera_index()
+                print(f"📹 Auto-detected camera index: {self.camera_index}")
+            except Exception as e:
+                print(f"⚠️ Auto-detection failed: {e}")
+                print("   Trying camera index 0...")
+                self.camera_index = 0
         
+        # Try to open camera
         self.camera = cv2.VideoCapture(self.camera_index)
         if not self.camera.isOpened():
-            raise RuntimeError(f"Failed to open camera {self.camera_index}")
+            raise RuntimeError(f"Failed to open camera {self.camera_index}. Make sure camera is connected and not in use by another application.")
         
         # Set camera properties for better performance
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         self.camera.set(cv2.CAP_PROP_FPS, FPS_TARGET)
+        
+        # Verify camera can actually read frames
+        ret, frame = self.camera.read()
+        if not ret or frame is None:
+            self.camera.release()
+            raise RuntimeError(f"Camera {self.camera_index} opened but cannot read frames. Check camera permissions.")
         
         print(f"✅ Camera connected (index: {self.camera_index})")
         

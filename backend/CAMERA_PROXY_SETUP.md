@@ -143,6 +143,17 @@ cp template.camera_proxy_config.json camera_proxy_config.json
 - Default values
 
 ### Backend
+
+**Set camera mode:**
+```bash
+# For proxy mode (receives frames from camera proxy)
+export CAMERA_MODE=proxy
+
+# For local mode (uses local camera directly)
+export CAMERA_MODE=local  # default
+```
+
+**Other environment variables:**
 - Standard backend environment variables
 - Must support HTTPS/WSS for WebSocket connections
 
