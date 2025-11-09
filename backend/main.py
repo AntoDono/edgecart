@@ -936,6 +936,381 @@ def customer_websocket(ws, customer_id):
         print(f"🔌 Customer {customer_id} WebSocket disconnected")
 
 
+# ============ Video Streaming Helper Functions ============
+
+def _initialize_proxy_state():
+    """Initialize global proxy state for camera proxy mode"""
+    global proxy_state_global
+    if proxy_state_global is None:
+        proxy_state_global = {
+            'inventory_cache': {},
+            'default_store_id': None,
+            'previous_class_counts': {},
+            'last_updated_time': {},
+            'last_detection_time': 0,
+            'cached_detections': [],
+            'frame_times': [],
+            'last_frame_time': time.time(),
+            'fps_window_size': 30
+        }
+        
+        # Load initial inventory and get default store
+        with app.app_context():
+            default_store = Store.query.first()
+            if not default_store:
+                default_store = Store(
+                    name="Default Store",
+                    location="Camera Detection",
+                    contact_info="N/A"
+                )
+                db.session.add(default_store)
+                db.session.commit()
+                print(f"✅ Created default store with ID: {default_store.id}")
+            proxy_state_global['default_store_id'] = default_store.id
+            
+            items = FruitInventory.query.all()
+            for item in items:
+                if item.fruit_type not in proxy_state_global['inventory_cache']:
+                    proxy_state_global['inventory_cache'][item.fruit_type] = (item.id, item.quantity)
+    
+    return proxy_state_global
+
+
+def _initialize_local_camera_state():
+    """Initialize state for local camera mode"""
+    inventory_cache = {}
+    default_store_id = None
+    
+    with app.app_context():
+        default_store = Store.query.first()
+        if not default_store:
+            default_store = Store(
+                name="Default Store",
+                location="Camera Detection",
+                contact_info="N/A"
+            )
+            db.session.add(default_store)
+            db.session.commit()
+            print(f"✅ Created default store with ID: {default_store.id}")
+        default_store_id = default_store.id
+        
+        items = FruitInventory.query.all()
+        for item in items:
+            if item.fruit_type not in inventory_cache:
+                inventory_cache[item.fruit_type] = (item.id, item.quantity)
+    
+    return inventory_cache, default_store_id
+
+
+def _process_detections(frame, detections, min_confidence=0.6):
+    """Process YOLO detections and add freshness scores"""
+    processed_detections = []
+    
+    for detection in detections:
+        if detection['confidence'] < min_confidence:
+            continue
+        
+        bbox = detection['bbox']
+        class_name = detection['class']
+        confidence = detection['confidence']
+        
+        # Get freshness score if model is loaded
+        freshness_score = None
+        cropped = None
+        if fresh_model is not None:
+            cropped = crop_bounding_box(frame, bbox)
+            if cropped is not None:
+                freshness_score = get_freshness_score(cropped, fresh_model, fresh_device, fresh_transform)
+        else:
+            cropped = crop_bounding_box(frame, bbox)
+            global _fresh_model_warning_shown
+            if not _fresh_model_warning_shown:
+                print(f"⚠️ Fresh model not loaded - freshness scores will be None")
+                _fresh_model_warning_shown = True
+        
+        # Store cropped image and metadata
+        if cropped is not None:
+            metadata = {
+                'confidence': float(confidence),
+                'freshness_score': float(freshness_score) if freshness_score is not None else None,
+                'timestamp': datetime.utcnow().isoformat(),
+                'bbox': bbox
+            }
+            processed_detections.append({
+                'bbox': bbox,
+                'class': class_name,
+                'confidence': float(confidence),
+                'freshness_score': float(freshness_score) if freshness_score is not None else None,
+                'cropped_image': cropped,
+                'metadata': metadata
+            })
+        else:
+            processed_detections.append({
+                'bbox': bbox,
+                'class': class_name,
+                'confidence': float(confidence),
+                'freshness_score': float(freshness_score) if freshness_score is not None else None
+            })
+    
+    return processed_detections
+
+
+def _calculate_freshness_updates(processed_detections):
+    """Calculate average freshness scores per fruit type"""
+    freshness_scores_by_type = {}
+    
+    for det in processed_detections:
+        class_name = det['class']
+        if det.get('freshness_score') is not None:
+            if class_name not in freshness_scores_by_type:
+                freshness_scores_by_type[class_name] = []
+            freshness_scores_by_type[class_name].append(det['freshness_score'])
+    
+    freshness_updates = {}
+    for fruit_type, freshness_scores in freshness_scores_by_type.items():
+        valid_scores = [score for score in freshness_scores if score is not None]
+        if valid_scores and len(valid_scores) > 0:
+            # freshness_scores are 0-100 from get_freshness_score, convert to 0-1.0
+            avg_freshness = (sum(valid_scores) / len(valid_scores)) / 100.0
+            freshness_updates[fruit_type] = round(avg_freshness, 4)
+    
+    return freshness_updates
+
+
+def _count_detected_classes(processed_detections):
+    """Count detected classes from processed detections"""
+    current_class_counts = {}
+    for det in processed_detections:
+        class_name = det['class']
+        current_class_counts[class_name] = current_class_counts.get(class_name, 0) + 1
+    return current_class_counts
+
+
+def _calculate_fps(frame_times, window_size=30):
+    """Calculate FPS from frame times"""
+    if len(frame_times) > window_size:
+        frame_times.pop(0)
+    
+    if len(frame_times) > 0:
+        avg_frame_time = sum(frame_times) / len(frame_times)
+        return 1.0 / avg_frame_time if avg_frame_time > 0 else 0.0
+    return 0.0
+
+
+def _broadcast_frame_to_frontend(frame, detections, fps):
+    """Broadcast frame and detections to all frontend connections"""
+    clean_detections = []
+    for det in detections:
+        clean_detections.append({
+            'bbox': det['bbox'],
+            'class': det['class'],
+            'confidence': det['confidence'],
+            'freshness_score': det.get('freshness_score')
+        })
+    
+    # Encode frame to JPEG
+    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    frame_bytes = buffer.tobytes()
+    
+    # Broadcast to all frontend connections
+    num_connections = len(frontend_video_connections)
+    if num_connections > 0:
+        for frontend_ws in list(frontend_video_connections):
+            try:
+                metadata_json = json.dumps({
+                    'type': 'frame_meta',
+                    'detections': clean_detections,
+                    'fps': round(fps, 2),
+                    'frame_size': len(frame_bytes),
+                    'timestamp': datetime.utcnow().isoformat()
+                })
+                frontend_ws.send(metadata_json)
+                frontend_ws.send(frame_bytes)
+            except Exception as e:
+                frontend_video_connections.discard(frontend_ws)
+                print(f"⚠️ Removed dead frontend connection: {e}")
+
+
+def _get_thumbnail_for_fruit_type(processed_detections, fruit_type):
+    """Get thumbnail image for a specific fruit type from detections"""
+    for det in processed_detections:
+        if det.get('class') == fruit_type and 'cropped_image' in det:
+            return det['cropped_image']
+    return None
+
+
+def _prepare_inventory_updates(current_class_counts, previous_class_counts, freshness_updates, 
+                               processed_detections, inventory_cache, default_store_id, 
+                               last_updated_time, current_time, update_delta):
+    """Prepare inventory updates based on detection changes"""
+    updates_to_process = []
+    all_fruit_types = set(current_class_counts.keys()) | set(previous_class_counts.keys())
+    
+    for fruit_type in all_fruit_types:
+        current_count = current_class_counts.get(fruit_type, 0)
+        previous_count = previous_class_counts.get(fruit_type, 0)
+        
+        # Check if enough time has passed since last update
+        if last_updated_time.get(fruit_type) is None:
+            last_updated_time[fruit_type] = current_time
+        else:
+            time_since_last_update = current_time - last_updated_time.get(fruit_type)
+            if time_since_last_update < update_delta:
+                continue
+            last_updated_time[fruit_type] = current_time
+        
+        # Handle count changes
+        if current_count != previous_count:
+            # Handle image storage
+            if current_count > 0:
+                fruit_images = []
+                for det in processed_detections:
+                    if det.get('class') == fruit_type and 'cropped_image' in det:
+                        fruit_images.append((det['cropped_image'], det.get('metadata', {})))
+                
+                if fruit_images:
+                    threading.Thread(
+                        target=replace_category_images,
+                        args=(fruit_images, fruit_type),
+                        daemon=True
+                    ).start()
+            else:
+                threading.Thread(
+                    target=delete_category_images,
+                    args=(fruit_type,),
+                    daemon=True
+                ).start()
+            
+            # Prepare database update
+            if fruit_type in inventory_cache:
+                item_id, old_quantity = inventory_cache[fruit_type]
+                updates_to_process.append({
+                    'type': 'update',
+                    'item_id': item_id,
+                    'fruit_type': fruit_type,
+                    'old_quantity': old_quantity,
+                    'new_quantity': current_count,
+                    'freshness_score': freshness_updates.get(fruit_type) if current_count > 0 else None,
+                    'thumbnail_image': _get_thumbnail_for_fruit_type(processed_detections, fruit_type)
+                })
+                inventory_cache[fruit_type] = (item_id, current_count)
+            elif current_count > 0:
+                updates_to_process.append({
+                    'type': 'create',
+                    'fruit_type': fruit_type,
+                    'quantity': current_count,
+                    'store_id': default_store_id,
+                    'freshness_score': freshness_updates.get(fruit_type),
+                    'thumbnail_image': _get_thumbnail_for_fruit_type(processed_detections, fruit_type)
+                })
+        
+        # Handle freshness-only updates
+        elif current_count > 0 and fruit_type in freshness_updates:
+            if fruit_type in inventory_cache:
+                item_id, _ = inventory_cache[fruit_type]
+                updates_to_process.append({
+                    'type': 'freshness_only',
+                    'item_id': item_id,
+                    'fruit_type': fruit_type,
+                    'freshness_score': freshness_updates[fruit_type]
+                })
+    
+    return updates_to_process
+
+
+def _apply_inventory_updates(updates_to_process, inventory_cache, processed_detections, default_store_id=None):
+    """Apply inventory updates to database"""
+    if not updates_to_process:
+        return
+    
+    with app.app_context():
+        for update in updates_to_process:
+            if update['type'] == 'update':
+                db_item = db.session.get(FruitInventory, update['item_id'])
+                if db_item:
+                    db_item.quantity = update['new_quantity']
+                    db_item.updated_at = datetime.utcnow()
+                    notify_quantity_change(db_item, update['old_quantity'], update['new_quantity'])
+                    
+                    # Update thumbnail if provided
+                    if update.get('thumbnail_image') is not None:
+                        thumbnail_path = save_thumbnail(update['thumbnail_image'], update['fruit_type'])
+                        db_item.thumbnail_path = thumbnail_path
+                    
+                    if update.get('freshness_score') is not None:
+                        update_freshness_for_item(db_item.id, update['freshness_score'])
+                    
+                    inventory_cache[update['fruit_type']] = (db_item.id, update['new_quantity'])
+                else:
+                    # Item was deleted, create new one
+                    inventory_cache.pop(update['fruit_type'], None)
+                    thumbnail_image = update.get('thumbnail_image')
+                    if not thumbnail_image:
+                        thumbnail_image = _get_thumbnail_for_fruit_type(processed_detections, update['fruit_type'])
+                    
+                    timestamp = datetime.utcnow()
+                    random_suffix = random.randint(1000, 9999)
+                    batch_number = f"BATCH-{timestamp.strftime('%Y%m%d')}-{random_suffix}"
+                    
+                    thumbnail_path = None
+                    if thumbnail_image is not None:
+                        thumbnail_path = save_thumbnail(thumbnail_image, update['fruit_type'])
+                    
+                    new_item = FruitInventory(
+                        store_id=default_store_id or update.get('store_id'),
+                        fruit_type=update['fruit_type'],
+                        quantity=update['new_quantity'],
+                        original_price=5.99,
+                        current_price=5.99,
+                        location_in_store="Camera Detection",
+                        batch_number=batch_number,
+                        thumbnail_path=thumbnail_path
+                    )
+                    db.session.add(new_item)
+                    db.session.flush()
+                    inventory_cache[update['fruit_type']] = (new_item.id, update['new_quantity'])
+                    
+                    if update.get('freshness_score') is not None:
+                        update_freshness_for_item(new_item.id, update['freshness_score'])
+                    
+                    item_data = notify_quantity_change(new_item, 0, update['new_quantity'])
+                    broadcast_to_admins('inventory_added', item_data)
+            
+            elif update['type'] == 'create':
+                timestamp = datetime.utcnow()
+                random_suffix = random.randint(1000, 9999)
+                batch_number = f"BATCH-{timestamp.strftime('%Y%m%d')}-{random_suffix}"
+                
+                thumbnail_path = None
+                if update.get('thumbnail_image') is not None:
+                    thumbnail_path = save_thumbnail(update['thumbnail_image'], update['fruit_type'])
+                
+                new_item = FruitInventory(
+                    store_id=update['store_id'],
+                    fruit_type=update['fruit_type'],
+                    quantity=update['quantity'],
+                    original_price=5.99,
+                    current_price=5.99,
+                    location_in_store="Camera Detection",
+                    batch_number=batch_number,
+                    thumbnail_path=thumbnail_path
+                )
+                db.session.add(new_item)
+                db.session.flush()
+                inventory_cache[update['fruit_type']] = (new_item.id, update['quantity'])
+                
+                if update.get('freshness_score') is not None:
+                    update_freshness_for_item(new_item.id, update['freshness_score'])
+                
+                item_data = notify_quantity_change(new_item, 0, update['quantity'])
+                broadcast_to_admins('inventory_added', item_data)
+            
+            elif update['type'] == 'freshness_only':
+                update_freshness_for_item(update['item_id'], update['freshness_score'])
+        
+        db.session.commit()
+
+
 @sock.route('/ws/stream_video')
 def stream_video_websocket(ws):
     """WebSocket for video stream - backend activates camera and streams frames with detections"""
@@ -965,39 +1340,7 @@ def stream_video_websocket(ws):
         # Initialize shared state for proxy mode (if in proxy mode)
         global proxy_state_global
         if is_proxy_mode:
-            # Initialize proxy state only once (shared across all connections)
-            if proxy_state_global is None:
-                proxy_state_global = {
-                    'inventory_cache': {},
-                    'default_store_id': None,
-                    'previous_class_counts': {},
-                    'last_updated_time': {},
-                    'last_detection_time': 0,
-                    'cached_detections': [],
-                    'frame_times': [],  # For FPS calculation
-                    'last_frame_time': time.time(),  # Track last frame processing time
-                    'fps_window_size': 30  # Number of frames to average for FPS
-                }
-                
-                # Load initial inventory and get default store
-                with app.app_context():
-                    default_store = Store.query.first()
-                    if not default_store:
-                        default_store = Store(
-                            name="Default Store",
-                            location="Camera Detection",
-                            contact_info="N/A"
-                        )
-                        db.session.add(default_store)
-                        db.session.commit()
-                        print(f"✅ Created default store with ID: {default_store.id}")
-                    proxy_state_global['default_store_id'] = default_store.id
-                    
-                    items = FruitInventory.query.all()
-                    for item in items:
-                        if item.fruit_type not in proxy_state_global['inventory_cache']:
-                            proxy_state_global['inventory_cache'][item.fruit_type] = (item.id, item.quantity)
-            
+            _initialize_proxy_state()
             print("📹 Proxy mode: Waiting for frames from camera proxy...")
             ws.send(json.dumps({
                 'type': 'info',
@@ -1008,30 +1351,7 @@ def stream_video_websocket(ws):
             """Process frames from camera and send to client"""
             nonlocal streaming, camera
             
-            # Load initial inventory and get default store
-            # Store as dict: {fruit_type: (item_id, current_quantity)}
-            inventory_cache = {}
-            default_store_id = None
-            with app.app_context():
-                # Get first store as default, or create one if none exists
-                default_store = Store.query.first()
-                if not default_store:
-                    # Create a default store if none exists
-                    default_store = Store(
-                        name="Default Store",
-                        location="Camera Detection",
-                        contact_info="N/A"
-                    )
-                    db.session.add(default_store)
-                    db.session.commit()
-                    print(f"✅ Created default store with ID: {default_store.id}")
-                default_store_id = default_store.id
-                
-                items = FruitInventory.query.all()
-                for item in items:
-                    # Use fruit_type as key, store (item_id, quantity) tuple
-                    if item.fruit_type not in inventory_cache:
-                        inventory_cache[item.fruit_type] = (item.id, item.quantity)
+            inventory_cache, default_store_id = _initialize_local_camera_state()
             
             # Track class counts
             previous_class_counts = {}  # {fruit_type: count}
@@ -1068,308 +1388,35 @@ def stream_video_websocket(ws):
                     time_since_last_detection = current_time - last_detection_time
                     
                     if time_since_last_detection >= detection_delta:
-                        # Run detection
+                        # Run detection and process
                         result = detect(frame, allowed_classes=['apple', 'banana', 'orange'], save=False, verbose=False)
-                        detections = result['detections']
-                        
-                        # Process each detection and add freshness scores
-                        processed_detections = []
-                        
-                        for detection in detections:
-                            if detection['confidence'] < min_confidence:
-                                continue
-                            
-                            bbox = detection['bbox']
-                            class_name = detection['class']
-                            confidence = detection['confidence']
-                            
-                            # Get freshness score if model is loaded
-                            freshness_score = None
-                            cropped = None
-                            if fresh_model is not None:
-                                cropped = crop_bounding_box(frame, bbox)
-                                if cropped is not None:
-                                    freshness_score = get_freshness_score(cropped, fresh_model, fresh_device, fresh_transform)
-                                    # Freshness will be updated in batched system with delay check
-                                else:
-                                    print(f"⚠️ Could not crop bounding box for {class_name}")
-                            else:
-                                # Still crop for image storage even if fresh model not loaded
-                                cropped = crop_bounding_box(frame, bbox)
-                                global _fresh_model_warning_shown
-                                if not _fresh_model_warning_shown:
-                                    print(f"⚠️ Fresh model not loaded - freshness scores will be None")
-                                    _fresh_model_warning_shown = True
-                            
-                            # Store cropped image and metadata for later (when counter changes)
-                            if cropped is not None:
-                                metadata = {
-                                    'confidence': float(confidence),
-                                    'freshness_score': float(freshness_score) if freshness_score is not None else None,
-                                    'timestamp': datetime.utcnow().isoformat(),
-                                    'bbox': bbox
-                                }
-                                processed_detections.append({
-                                    'bbox': bbox,  # [x1, y1, x2, y2]
-                                    'class': class_name,
-                                    'confidence': float(confidence),
-                                    'freshness_score': float(freshness_score) if freshness_score is not None else None,
-                                    'cropped_image': cropped,  # Store cropped image for later
-                                    'metadata': metadata
-                                })
-                            else:
-                                processed_detections.append({
-                                    'bbox': bbox,  # [x1, y1, x2, y2]
-                                    'class': class_name,
-                                    'confidence': float(confidence),
-                                    'freshness_score': float(freshness_score) if freshness_score is not None else None
-                                })
+                        processed_detections = _process_detections(frame, result['detections'], min_confidence)
                         
                         # Update cache and detection time
                         cached_detections = processed_detections
                         last_detection_time = current_time
                         
-                        # Count detected classes and collect freshness scores
-                        current_class_counts = {}
-                        freshness_scores_by_type = {}  # {fruit_type: [freshness_score1, freshness_score2, ...]}
+                        # Count classes and calculate freshness updates
+                        current_class_counts = _count_detected_classes(processed_detections)
+                        freshness_updates = _calculate_freshness_updates(processed_detections)
                         
-                        for det in processed_detections:
-                            class_name = det['class']
-                            current_class_counts[class_name] = current_class_counts.get(class_name, 0) + 1
-                            
-                            # Collect freshness scores for freshness calculation
-                            if det.get('freshness_score') is not None:
-                                if class_name not in freshness_scores_by_type:
-                                    freshness_scores_by_type[class_name] = []
-                                freshness_scores_by_type[class_name].append(det['freshness_score'])
+                        # Prepare and apply inventory updates
+                        updates_to_process = _prepare_inventory_updates(
+                            current_class_counts, previous_class_counts, freshness_updates,
+                            processed_detections, inventory_cache, default_store_id,
+                            last_updated_time, current_time, update_delta
+                        )
                         
-                        # Calculate average freshness scores per fruit type
-                        # Note: freshness_score from get_freshness_score is already 0-100, but we want 0-1.0
-                        # So we need to divide by 100 to convert back to 0-1.0 scale
-                        freshness_updates = {}  # {fruit_type: average_freshness_score}
-                        for fruit_type, freshness_scores in freshness_scores_by_type.items():
-                            # Filter out None values and ensure we have scores
-                            valid_scores = [score for score in freshness_scores if score is not None]
-                            if valid_scores and len(valid_scores) > 0:
-                                # freshness_scores are 0-100 from get_freshness_score, convert to 0-1.0
-                                avg_freshness = (sum(valid_scores) / len(valid_scores)) / 100.0
-                                freshness_updates[fruit_type] = round(avg_freshness, 4)
+                        _apply_inventory_updates(updates_to_process, inventory_cache, processed_detections, default_store_id)
                         
-                        # Compare with previous counts and update database
-                        # Batch all updates to do in a single database transaction
-                        updates_to_process = []
-                        
-                        # Get all fruit types that need to be checked (detected + previously detected)
-                        all_fruit_types = set(current_class_counts.keys()) | set(previous_class_counts.keys())
-                        
-                        # SINGLE UPDATE CHECK - Process all fruits with delay check
-                        for fruit_type in all_fruit_types:
-                            current_count = current_class_counts.get(fruit_type, 0)
-                            previous_count = previous_class_counts.get(fruit_type, 0)
-                            
-                            # # Check if enough time has passed since last update for this fruit type
-                            # print(f"last_updated_time: {last_updated_time} | fruit_type: {fruit_type} | previous_count: {previous_count} | current_count: {current_count}")
-                            if last_updated_time.get(fruit_type) is None:
-                                # First time seeing this fruit type
-                                can_update = True
-                                last_updated_time[fruit_type] = current_time
-                            else:
-                                time_since_last_update = current_time - last_updated_time.get(fruit_type)
-                                can_update = time_since_last_update >= update_delta
-                                # print(f"time_since_last_update: {time_since_last_update:.2f}s | can_update: {can_update}")
-                                if not can_update:
-                                    continue  # Skip this fruit type until delay passes
-                                else:
-                                    last_updated_time[fruit_type] = current_time
-                                    # print(f"✅ Updating {fruit_type}: {time_since_last_update:.2f}s >= {update_delta}s")
-                            
-                            # Handle count changes (including going to 0)
-                            if current_count != previous_count:
-                                # Handle image storage
-                                if current_count > 0:
-                                    # Store images for detected fruits
-                                    fruit_images = []
-                                    for det in processed_detections:
-                                        if det.get('class') == fruit_type and 'cropped_image' in det:
-                                            fruit_images.append((det['cropped_image'], det.get('metadata', {})))
-                                    
-                                    if fruit_images:
-                                        threading.Thread(
-                                            target=replace_category_images,
-                                            args=(fruit_images, fruit_type),
-                                            daemon=True
-                                        ).start()
-                                else:
-                                    # Clear images when fruit disappears
-                                    threading.Thread(
-                                        target=delete_category_images,
-                                        args=(fruit_type,),
-                                        daemon=True
-                                    ).start()
-                                
-                                # Prepare database update
-                                if fruit_type in inventory_cache:
-                                    item_id, old_quantity = inventory_cache[fruit_type]
-                                    updates_to_process.append({
-                                        'type': 'update',
-                                        'item_id': item_id,
-                                        'fruit_type': fruit_type,
-                                        'old_quantity': old_quantity,
-                                        'new_quantity': current_count,
-                                        'freshness_score': freshness_updates.get(fruit_type) if current_count > 0 else None
-                                    })
-                                    # Update cache immediately
-                                    inventory_cache[fruit_type] = (item_id, current_count)
-                                elif current_count > 0:
-                                    # Create new inventory item (store should exist now)
-                                    if default_store_id is None:
-                                        # This shouldn't happen, but create store if needed
-                                        with app.app_context():
-                                            default_store = Store.query.first()
-                                            if not default_store:
-                                                default_store = Store(
-                                                    name="Default Store",
-                                                    location="Camera Detection",
-                                                    contact_info="N/A"
-                                                )
-                                                db.session.add(default_store)
-                                                db.session.commit()
-                                                print(f"✅ Created default store with ID: {default_store.id}")
-                                            default_store_id = default_store.id
-                                    
-                                    # Get first cropped image for thumbnail if available
-                                    thumbnail_image = None
-                                    for det in processed_detections:
-                                        if det.get('class') == fruit_type and 'cropped_image' in det:
-                                            thumbnail_image = det['cropped_image']
-                                            break
-                                    
-                                    updates_to_process.append({
-                                        'type': 'create',
-                                        'fruit_type': fruit_type,
-                                        'quantity': current_count,
-                                        'store_id': default_store_id,
-                                        'freshness_score': freshness_updates.get(fruit_type),
-                                        'thumbnail_image': thumbnail_image
-                                    })
-                            
-                            # Handle freshness-only updates (when count didn't change but freshness did)
-                            elif current_count > 0 and fruit_type in freshness_updates:
-                                if fruit_type in inventory_cache:
-                                    item_id, _ = inventory_cache[fruit_type]
-                                    updates_to_process.append({
-                                        'type': 'freshness_only',
-                                        'item_id': item_id,
-                                        'fruit_type': fruit_type,
-                                        'freshness_score': freshness_updates[fruit_type]
-                                    })
-                        
-                        # Process all updates in a single database transaction
-                        if updates_to_process:
-                            with app.app_context():
-                                for update in updates_to_process:
-                                    if update['type'] == 'update':
-                                        db_item = db.session.get(FruitInventory, update['item_id'])
-                                        if db_item:
-                                            db_item.quantity = update['new_quantity']
-                                            db_item.updated_at = datetime.utcnow()
-                                            notify_quantity_change(db_item, update['old_quantity'], update['new_quantity'])
-                                            
-                                            # Update freshness if provided
-                                            if update.get('freshness_score') is not None:
-                                                update_freshness_for_item(db_item.id, update['freshness_score'])
-                                            
-                                            # Update cache
-                                            inventory_cache[update['fruit_type']] = (db_item.id, update['new_quantity'])
-                                        else:
-                                            # Item was deleted, remove from cache and create new one
-                                            inventory_cache.pop(update['fruit_type'], None)
-                                            
-                                            # Get thumbnail image for the fruit type
-                                            thumbnail_image = None
-                                            for det in processed_detections:
-                                                if det.get('class') == update['fruit_type'] and 'cropped_image' in det:
-                                                    thumbnail_image = det['cropped_image']
-                                                    break
-                                            
-                                            # Create new item
-                                            timestamp = datetime.utcnow()
-                                            random_suffix = random.randint(1000, 9999)
-                                            batch_number = f"BATCH-{timestamp.strftime('%Y%m%d')}-{random_suffix}"
-                                            
-                                            thumbnail_path = None
-                                            if thumbnail_image is not None:
-                                                thumbnail_path = save_thumbnail(thumbnail_image, update['fruit_type'])
-                                            
-                                            new_item = FruitInventory(
-                                                store_id=default_store_id,
-                                                fruit_type=update['fruit_type'],
-                                                quantity=update['new_quantity'],
-                                                original_price=5.99,
-                                                current_price=5.99,
-                                                location_in_store="Camera Detection",
-                                                batch_number=batch_number,
-                                                thumbnail_path=thumbnail_path
-                                            )
-                                            db.session.add(new_item)
-                                            db.session.flush()
-                                            inventory_cache[update['fruit_type']] = (new_item.id, update['new_quantity'])
-                                            
-                                            if update.get('freshness_score') is not None:
-                                                update_freshness_for_item(new_item.id, update['freshness_score'])
-                                            
-                                            item_data = notify_quantity_change(new_item, 0, update['new_quantity'])
-                                            broadcast_to_admins('inventory_added', item_data)
-                                    elif update['type'] == 'create':
-                                        # Generate time-based random batch number
-                                        timestamp = datetime.utcnow()
-                                        random_suffix = random.randint(1000, 9999)
-                                        batch_number = f"BATCH-{timestamp.strftime('%Y%m%d')}-{random_suffix}"
-                                        
-                                        # Save thumbnail if image is available
-                                        thumbnail_path = None
-                                        if update.get('thumbnail_image') is not None:
-                                            thumbnail_path = save_thumbnail(update['thumbnail_image'], update['fruit_type'])
-                                        
-                                        new_item = FruitInventory(
-                                            store_id=update['store_id'],
-                                            fruit_type=update['fruit_type'],
-                                            quantity=update['quantity'],
-                                            original_price=5.99,
-                                            current_price=5.99,
-                                            location_in_store="Camera Detection",
-                                            batch_number=batch_number,
-                                            thumbnail_path=thumbnail_path
-                                        )
-                                        db.session.add(new_item)
-                                        db.session.flush()  # Get the ID without committing
-                                        inventory_cache[update['fruit_type']] = (new_item.id, update['quantity'])
-                                        
-                                        # Update freshness if provided
-                                        if update.get('freshness_score') is not None:
-                                            update_freshness_for_item(new_item.id, update['freshness_score'])
-                                        
-                                        # Notify about quantity change (new item = increase from 0)
-                                        item_data = notify_quantity_change(new_item, 0, update['quantity'])
-                                        
-                                        # Also broadcast inventory_added event so frontend can add it to the list
-                                        broadcast_to_admins('inventory_added', item_data)
-                                    elif update['type'] == 'freshness_only':
-                                        # Update freshness without changing quantity
-                                        update_freshness_for_item(update['item_id'], update['freshness_score'])
-                                
-                                # Commit all changes at once
-                                db.session.commit()
-                            
-                            # Update previous counts only for fruits that were actually processed
-                            for update in updates_to_process:
-                                fruit_type = update.get('fruit_type')
-                                if fruit_type:
-                                    if update['type'] in ['update', 'create']:
-                                        previous_class_counts[fruit_type] = update.get('new_quantity', update.get('quantity', 0))
-                                    elif update['type'] == 'freshness_only':
-                                        # Keep the same count for freshness-only updates
-                                        previous_class_counts[fruit_type] = current_class_counts.get(fruit_type, 0)
+                        # Update previous counts
+                        for update in updates_to_process:
+                            fruit_type = update.get('fruit_type')
+                            if fruit_type:
+                                if update['type'] in ['update', 'create']:
+                                    previous_class_counts[fruit_type] = update.get('new_quantity', update.get('quantity', 0))
+                                elif update['type'] == 'freshness_only':
+                                    previous_class_counts[fruit_type] = current_class_counts.get(fruit_type, 0)
                     else:
                         # Use cached detections
                         processed_detections = cached_detections
@@ -1378,46 +1425,13 @@ def stream_video_websocket(ws):
                     current_time = time.time()
                     frame_time = current_time - last_time
                     last_time = current_time
-                    
                     frame_times.append(frame_time)
-                    if len(frame_times) > window_size:
-                        frame_times.pop(0)
+                    fps = _calculate_fps(frame_times, window_size)
                     
-                    if len(frame_times) > 0:
-                        avg_frame_time = sum(frame_times) / len(frame_times)
-                        fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0.0
-                    else:
-                        fps = 0.0
+                    # Broadcast frame to frontend
+                    _broadcast_frame_to_frontend(frame, processed_detections, fps)
                     
-                    # Encode original frame (non-annotated) to JPEG
-                    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                    frame_bytes = buffer.tobytes()
-                    
-                    # Create clean detections for JSON serialization (remove numpy arrays)
-                    clean_detections = []
-                    for det in processed_detections:
-                        clean_det = {
-                            'bbox': det['bbox'],
-                            'class': det['class'],
-                            'confidence': det['confidence'],
-                            'freshness_score': det.get('freshness_score')
-                        }
-                        clean_detections.append(clean_det)
-                    
-                    # Send metadata first (detections, fps, frame size)
-                    ws.send(json.dumps({
-                        'type': 'frame_meta',
-                        'detections': clean_detections,
-                        'fps': round(fps, 2),
-                        'frame_size': len(frame_bytes),
-                        'timestamp': datetime.utcnow().isoformat()
-                    }))
-                    
-                    # Send binary frame data (much more efficient than base64)
-                    ws.send(frame_bytes)
-                    
-                    # Adaptive frame rate control - only sleep if processing was fast
-                    # Target ~10 FPS, but don't limit if processing is already slow
+                    # Adaptive frame rate control
                     elapsed = time.time() - frame_start_time
                     target_frame_time = 0.05  # 15 FPS
                     if elapsed < target_frame_time:
@@ -1454,307 +1468,48 @@ def stream_video_websocket(ws):
                 time_since_last_detection = current_time - state['last_detection_time']
                 
                 if time_since_last_detection >= detection_delta:
-                    # Run detection
+                    # Run detection and process
                     result = detect(frame, allowed_classes=['apple', 'banana', 'orange'], save=False, verbose=False)
-                    detections = result['detections']
-                    
-                    # Process each detection and add freshness scores
-                    processed_detections = []
-                    min_confidence = 0.6
-                    
-                    for detection in detections:
-                        if detection['confidence'] < min_confidence:
-                            continue
-                        
-                        bbox = detection['bbox']
-                        class_name = detection['class']
-                        confidence = detection['confidence']
-                        
-                        # Get freshness score if model is loaded
-                        freshness_score = None
-                        cropped = None
-                        if fresh_model is not None:
-                            cropped = crop_bounding_box(frame, bbox)
-                            if cropped is not None:
-                                freshness_score = get_freshness_score(cropped, fresh_model, fresh_device, fresh_transform)
-                        else:
-                            cropped = crop_bounding_box(frame, bbox)
-                        
-                        # Store cropped image and metadata
-                        if cropped is not None:
-                            metadata = {
-                                'confidence': float(confidence),
-                                'freshness_score': float(freshness_score) if freshness_score is not None else None,
-                                'timestamp': datetime.utcnow().isoformat(),
-                                'bbox': bbox
-                            }
-                            processed_detections.append({
-                                'bbox': bbox,
-                                'class': class_name,
-                                'confidence': float(confidence),
-                                'freshness_score': float(freshness_score) if freshness_score is not None else None,
-                                'cropped_image': cropped,
-                                'metadata': metadata
-                            })
-                        else:
-                            processed_detections.append({
-                                'bbox': bbox,
-                                'class': class_name,
-                                'confidence': float(confidence),
-                                'freshness_score': float(freshness_score) if freshness_score is not None else None
-                            })
+                    processed_detections = _process_detections(frame, result['detections'], min_confidence=0.6)
                     
                     # Update cache and detection time
                     state['cached_detections'] = processed_detections
                     state['last_detection_time'] = current_time
                     
-                    # Count detected classes and collect freshness scores
-                    current_class_counts = {}
-                    freshness_scores_by_type = {}
+                    # Count classes and calculate freshness updates
+                    current_class_counts = _count_detected_classes(processed_detections)
+                    freshness_updates = _calculate_freshness_updates(processed_detections)
                     
-                    for det in processed_detections:
-                        class_name = det['class']
-                        current_class_counts[class_name] = current_class_counts.get(class_name, 0) + 1
-                        
-                        if det.get('freshness_score') is not None:
-                            if class_name not in freshness_scores_by_type:
-                                freshness_scores_by_type[class_name] = []
-                            freshness_scores_by_type[class_name].append(det['freshness_score'])
+                    # Prepare and apply inventory updates
+                    updates_to_process = _prepare_inventory_updates(
+                        current_class_counts, state['previous_class_counts'], freshness_updates,
+                        processed_detections, state['inventory_cache'], state['default_store_id'],
+                        state['last_updated_time'], current_time, update_delta
+                    )
                     
-                    # Calculate average freshness scores per fruit type
-                    freshness_updates = {}
-                    for fruit_type, freshness_scores in freshness_scores_by_type.items():
-                        valid_scores = [score for score in freshness_scores if score is not None]
-                        if valid_scores and len(valid_scores) > 0:
-                            avg_freshness = (sum(valid_scores) / len(valid_scores)) / 100.0
-                            freshness_updates[fruit_type] = round(avg_freshness, 4)
+                    _apply_inventory_updates(updates_to_process, state['inventory_cache'], processed_detections, state['default_store_id'])
                     
-                    # Compare with previous counts and update database
-                    updates_to_process = []
-                    all_fruit_types = set(current_class_counts.keys()) | set(state['previous_class_counts'].keys())
-                    
-                    for fruit_type in all_fruit_types:
-                        current_count = current_class_counts.get(fruit_type, 0)
-                        previous_count = state['previous_class_counts'].get(fruit_type, 0)
-                        
-                        # Check if enough time has passed since last update
-                        if state['last_updated_time'].get(fruit_type) is None:
-                            state['last_updated_time'][fruit_type] = current_time
-                        else:
-                            time_since_last_update = current_time - state['last_updated_time'].get(fruit_type)
-                            if time_since_last_update < update_delta:
-                                continue
-                            else:
-                                state['last_updated_time'][fruit_type] = current_time
-                        
-                        # Handle count changes
-                        if current_count != previous_count:
-                            # Handle image storage
-                            if current_count > 0:
-                                fruit_images = []
-                                for det in processed_detections:
-                                    if det.get('class') == fruit_type and 'cropped_image' in det:
-                                        fruit_images.append((det['cropped_image'], det.get('metadata', {})))
-                                
-                                if fruit_images:
-                                    threading.Thread(
-                                        target=replace_category_images,
-                                        args=(fruit_images, fruit_type),
-                                        daemon=True
-                                    ).start()
-                            else:
-                                threading.Thread(
-                                    target=delete_category_images,
-                                    args=(fruit_type,),
-                                    daemon=True
-                                ).start()
-                            
-                            # Prepare database update
-                            if fruit_type in state['inventory_cache']:
-                                item_id, old_quantity = state['inventory_cache'][fruit_type]
-                                updates_to_process.append({
-                                    'type': 'update',
-                                    'item_id': item_id,
-                                    'fruit_type': fruit_type,
-                                    'old_quantity': old_quantity,
-                                    'new_quantity': current_count,
-                                    'freshness_score': freshness_updates.get(fruit_type) if current_count > 0 else None
-                                })
-                            else:
-                                # Get first cropped image for thumbnail if available (matching fruit_type)
-                                thumbnail_image = None
-                                for det in processed_detections:
-                                    if det.get('class') == fruit_type and 'cropped_image' in det:
-                                        thumbnail_image = det['cropped_image']
-                                        break
-                                
-                                updates_to_process.append({
-                                    'type': 'create',
-                                    'fruit_type': fruit_type,
-                                    'quantity': current_count,
-                                    'store_id': state['default_store_id'],
-                                    'freshness_score': freshness_updates.get(fruit_type) if current_count > 0 else None,
-                                    'thumbnail_image': thumbnail_image
-                                })
-                        
-                        # Handle freshness-only updates
-                        elif fruit_type in freshness_updates and fruit_type in state['inventory_cache']:
-                            item_id, _ = state['inventory_cache'][fruit_type]
-                            updates_to_process.append({
-                                'type': 'freshness_only',
-                                'item_id': item_id,
-                                'fruit_type': fruit_type,
-                                'freshness_score': freshness_updates[fruit_type]
-                            })
-                    
-                    # Process all updates in a single database transaction
-                    if updates_to_process:
-                        with app.app_context():
-                            for update in updates_to_process:
-                                if update['type'] == 'update':
-                                    db_item = db.session.get(FruitInventory, update['item_id'])
-                                    if db_item:
-                                        db_item.quantity = update['new_quantity']
-                                        db_item.updated_at = datetime.utcnow()
-                                        notify_quantity_change(db_item, update['old_quantity'], update['new_quantity'])
-                                        
-                                        if update.get('freshness_score') is not None:
-                                            update_freshness_for_item(db_item.id, update['freshness_score'])
-                                        
-                                        state['inventory_cache'][update['fruit_type']] = (db_item.id, update['new_quantity'])
-                                    else:
-                                        # Item was deleted, remove from cache and create new one
-                                        state['inventory_cache'].pop(update['fruit_type'], None)
-                                        
-                                        # Get thumbnail image for the fruit type
-                                        thumbnail_image = None
-                                        for det in processed_detections:
-                                            if det.get('class') == update['fruit_type'] and 'cropped_image' in det:
-                                                thumbnail_image = det['cropped_image']
-                                                break
-                                        
-                                        # Create new item
-                                        timestamp = datetime.utcnow()
-                                        random_suffix = random.randint(1000, 9999)
-                                        batch_number = f"BATCH-{timestamp.strftime('%Y%m%d')}-{random_suffix}"
-                                        
-                                        thumbnail_path = None
-                                        if thumbnail_image is not None:
-                                            thumbnail_path = save_thumbnail(thumbnail_image, update['fruit_type'])
-                                        
-                                        new_item = FruitInventory(
-                                            store_id=state['default_store_id'],
-                                            fruit_type=update['fruit_type'],
-                                            quantity=update['new_quantity'],
-                                            original_price=5.99,
-                                            current_price=5.99,
-                                            location_in_store="Camera Detection",
-                                            batch_number=batch_number,
-                                            thumbnail_path=thumbnail_path
-                                        )
-                                        db.session.add(new_item)
-                                        db.session.flush()
-                                        state['inventory_cache'][update['fruit_type']] = (new_item.id, update['new_quantity'])
-                                        
-                                        if update.get('freshness_score') is not None:
-                                            update_freshness_for_item(new_item.id, update['freshness_score'])
-                                        
-                                        item_data = notify_quantity_change(new_item, 0, update['new_quantity'])
-                                        broadcast_to_admins('inventory_added', item_data)
-                                
-                                elif update['type'] == 'create':
-                                    timestamp = datetime.utcnow()
-                                    random_suffix = random.randint(1000, 9999)
-                                    batch_number = f"BATCH-{timestamp.strftime('%Y%m%d')}-{random_suffix}"
-                                    
-                                    thumbnail_path = None
-                                    if update.get('thumbnail_image') is not None:
-                                        thumbnail_path = save_thumbnail(update['thumbnail_image'], update['fruit_type'])
-                                    
-                                    new_item = FruitInventory(
-                                        store_id=update['store_id'],
-                                        fruit_type=update['fruit_type'],
-                                        quantity=update['quantity'],
-                                        original_price=5.99,
-                                        current_price=5.99,
-                                        location_in_store="Camera Detection",
-                                        batch_number=batch_number,
-                                        thumbnail_path=thumbnail_path
-                                    )
-                                    db.session.add(new_item)
-                                    db.session.flush()
-                                    state['inventory_cache'][update['fruit_type']] = (new_item.id, update['quantity'])
-                                    
-                                    if update.get('freshness_score') is not None:
-                                        update_freshness_for_item(new_item.id, update['freshness_score'])
-                                    
-                                    item_data = notify_quantity_change(new_item, 0, update['quantity'])
-                                    broadcast_to_admins('inventory_added', item_data)
-                                
-                                elif update['type'] == 'freshness_only':
-                                    update_freshness_for_item(update['item_id'], update['freshness_score'])
-                            
-                            db.session.commit()
-                        
-                        # Update previous counts
-                        for update in updates_to_process:
-                            fruit_type = update.get('fruit_type')
-                            if fruit_type:
-                                if update['type'] in ['update', 'create']:
-                                    state['previous_class_counts'][fruit_type] = update.get('new_quantity', update.get('quantity', 0))
-                                elif update['type'] == 'freshness_only':
-                                    state['previous_class_counts'][fruit_type] = current_class_counts.get(fruit_type, 0)
+                    # Update previous counts
+                    for update in updates_to_process:
+                        fruit_type = update.get('fruit_type')
+                        if fruit_type:
+                            if update['type'] in ['update', 'create']:
+                                state['previous_class_counts'][fruit_type] = update.get('new_quantity', update.get('quantity', 0))
+                            elif update['type'] == 'freshness_only':
+                                state['previous_class_counts'][fruit_type] = current_class_counts.get(fruit_type, 0)
                 else:
                     # Use cached detections
                     processed_detections = state['cached_detections']
-                
-                # Prepare detections for sending
-                clean_detections = []
-                for det in processed_detections:
-                    clean_detections.append({
-                        'bbox': det['bbox'],
-                        'class': det['class'],
-                        'confidence': det['confidence'],
-                        'freshness_score': det.get('freshness_score')
-                    })
                 
                 # Calculate FPS
                 current_frame_time = time.time()
                 frame_time = current_frame_time - state['last_frame_time']
                 state['last_frame_time'] = current_frame_time
-                
                 state['frame_times'].append(frame_time)
-                window_size = state.get('fps_window_size', 30)
-                if len(state['frame_times']) > window_size:
-                    state['frame_times'].pop(0)
+                fps = _calculate_fps(state['frame_times'], state.get('fps_window_size', 30))
                 
-                if len(state['frame_times']) > 0:
-                    avg_frame_time = sum(state['frame_times']) / len(state['frame_times'])
-                    fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0.0
-                else:
-                    fps = 0.0
-                
-                # Encode frame to JPEG
-                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                frame_bytes = buffer.tobytes()
-                
-                # Broadcast to all frontend connections
-                num_connections = len(frontend_video_connections)
-                if num_connections > 0:
-                    for frontend_ws in list(frontend_video_connections):
-                        try:
-                            metadata_json = json.dumps({
-                                'type': 'frame_meta',
-                                'detections': clean_detections,
-                                'fps': round(fps, 2),
-                                'frame_size': len(frame_bytes),
-                                'timestamp': datetime.utcnow().isoformat()
-                            })
-                            frontend_ws.send(metadata_json)
-                            frontend_ws.send(frame_bytes)
-                        except Exception as e:
-                            frontend_video_connections.discard(frontend_ws)
-                            print(f"⚠️ Removed dead frontend connection: {e}")
+                # Broadcast frame to frontend
+                _broadcast_frame_to_frontend(frame, processed_detections, fps)
                 
             except Exception as e:
                 print(f"❌ Error processing proxy frame: {e}")
