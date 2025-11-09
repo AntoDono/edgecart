@@ -249,6 +249,26 @@ def register_inventory_routes(app):
                         for img_info in detection_images:
                             image_path = DETECTION_IMAGES_DIR / fruit_type / img_info['filename']
                             
+                            # Check if file still exists (might have been deleted by replace_category_images)
+                            if not image_path.exists():
+                                print(f"⚠️ Image {image_path} was deleted, skipping...")
+                                continue
+                            
+                            # Mark image as processed FIRST to prevent deletion during processing
+                            # This protects the image from being deleted by replace_category_images/delete_category_images
+                            new_path = mark_image_as_processed(image_path)
+                            if new_path:
+                                # Update image_path reference - new_path is relative like "detection_images/category/filename"
+                                image_path = Path(new_path)
+                                # Verify the renamed file exists
+                                if not image_path.exists():
+                                    print(f"⚠️ Image {image_path} was deleted after marking as processed, skipping...")
+                                    continue
+                            else:
+                                # If marking failed, file might have been deleted, skip it
+                                if not image_path.exists():
+                                    continue
+                            
                             # Run blemish detection if not already done
                             blemishes_data = None
                             if img_info.get('metadata') and 'blemishes' in img_info['metadata']:
@@ -269,12 +289,6 @@ def register_inventory_routes(app):
                                     metadata_path = image_path.with_suffix('.json')
                                     with open(metadata_path, 'w') as f:
                                         json.dump(img_info['metadata'], f, indent=2, default=str)
-                                    
-                                    # Mark image as processed so it doesn't get deleted
-                                    new_path = mark_image_as_processed(image_path)
-                                    if new_path:
-                                        # Update image_path reference - new_path is relative like "detection_images/category/filename"
-                                        image_path = Path(new_path)
                                         
                                 except Exception as e:
                                     print(f"Error detecting blemishes for {image_path}: {e}")
