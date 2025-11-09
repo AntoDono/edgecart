@@ -457,52 +457,120 @@ const InventoryView = () => {
   };
 
   const handleAnalyzeAndOptimize = async () => {
+    // Prevent multiple simultaneous analyses
+    if (isAnalyzing) {
+      return;
+    }
+
     setIsAnalyzing(true);
     setAnalyzingProgress(0);
-    setAnalyzingMessage('Starting analysis...');
+    setAnalyzingMessage('Connecting to server...');
 
-    const eventSource = new EventSource(`${config.apiUrl}/api/inventory/analyze-optimize`);
+    let eventSource: EventSource | null = null;
+    let connectionTimeout: ReturnType<typeof setTimeout> | null = null;
+    let hasReceivedData = false;
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        if (data.type === 'start') {
-          setAnalyzingMessage(`Analyzing ${data.total} items...`);
-        } else if (data.type === 'progress') {
-          setAnalyzingProgress(data.progress);
-          setAnalyzingMessage(data.message || `Processing ${data.current}/${data.total}...`);
-        } else if (data.type === 'item_complete') {
-          setAnalyzingMessage(`Completed ${data.item}...`);
-          // Refresh inventory to get updated scores
-          fetchInventory();
-        } else if (data.type === 'complete') {
-          setAnalyzingProgress(100);
-          setAnalyzingMessage('Analysis complete!');
-          setTimeout(() => {
-            setIsAnalyzing(false);
-            eventSource.close();
-            fetchInventory();
-            fetchImpactStats(); // Refresh stats after analysis
-          }, 1000);
-        } else if (data.type === 'error') {
-          console.error('Analysis error:', data.error);
-          setAnalyzingMessage(`Error: ${data.error}`);
-          setTimeout(() => {
-            setIsAnalyzing(false);
-            eventSource.close();
-          }, 3000);
+    try {
+      eventSource = new EventSource(`${config.apiUrl}/api/inventory/analyze-optimize`);
+
+      // Set a timeout to detect if connection isn't opening
+      connectionTimeout = setTimeout(() => {
+        if (!hasReceivedData && eventSource) {
+          console.error('SSE connection timeout - no data received');
+          setAnalyzingMessage('Connection timeout. Please try again.');
+          setIsAnalyzing(false);
+          eventSource.close();
         }
-      } catch (e) {
-        console.error('Error parsing SSE data:', e);
-      }
-    };
+      }, 10000); // 10 second timeout
 
-    eventSource.onerror = () => {
-      console.error('SSE connection error');
+      eventSource.onopen = () => {
+        console.log('SSE connection opened');
+        setAnalyzingMessage('Starting analysis...');
+        if (connectionTimeout) {
+          clearTimeout(connectionTimeout);
+        }
+      };
+
+      eventSource.onmessage = (event) => {
+        hasReceivedData = true;
+        if (connectionTimeout) {
+          clearTimeout(connectionTimeout);
+        }
+
+        try {
+          // EventSource automatically parses "data: {...}" format
+          const data = JSON.parse(event.data);
+          
+          if (data.type === 'start') {
+            setAnalyzingMessage(`Analyzing ${data.total} items...`);
+          } else if (data.type === 'progress') {
+            setAnalyzingProgress(data.progress);
+            setAnalyzingMessage(data.message || `Processing ${data.current}/${data.total}...`);
+          } else if (data.type === 'item_complete') {
+            setAnalyzingMessage(`Completed ${data.item}...`);
+            // Refresh inventory to get updated scores
+            fetchInventory();
+          } else if (data.type === 'complete') {
+            setAnalyzingProgress(100);
+            setAnalyzingMessage('Analysis complete!');
+            setTimeout(() => {
+              setIsAnalyzing(false);
+              if (eventSource) {
+                eventSource.close();
+              }
+              fetchInventory();
+              fetchImpactStats(); // Refresh stats after analysis
+            }, 1000);
+          } else if (data.type === 'error') {
+            console.error('Analysis error:', data.error);
+            setAnalyzingMessage(`Error: ${data.error}`);
+            setTimeout(() => {
+              setIsAnalyzing(false);
+              if (eventSource) {
+                eventSource.close();
+              }
+            }, 3000);
+          }
+        } catch (e) {
+          console.error('Error parsing SSE data:', e, 'Raw data:', event.data);
+          setAnalyzingMessage(`Error parsing response: ${e}`);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('SSE connection error:', error);
+        if (connectionTimeout) {
+          clearTimeout(connectionTimeout);
+        }
+        
+        // Check if connection is closed
+        if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+          if (!hasReceivedData) {
+            setAnalyzingMessage('Connection failed. Please check your connection and try again.');
+          } else {
+            setAnalyzingMessage('Connection closed unexpectedly.');
+          }
+        } else {
+          // Connection is still opening or open, might be a temporary error
+          setAnalyzingMessage('Connection error. Retrying...');
+        }
+        
+        setIsAnalyzing(false);
+        if (eventSource) {
+          eventSource.close();
+        }
+      };
+    } catch (error) {
+      console.error('Failed to create EventSource:', error);
+      setAnalyzingMessage('Failed to start analysis. Please check your connection.');
       setIsAnalyzing(false);
-      eventSource.close();
-    };
+      if (connectionTimeout) {
+        clearTimeout(connectionTimeout);
+      }
+      if (eventSource) {
+        eventSource.close();
+      }
+    }
   };
 
   const fetchDetailedAnalytics = async () => {

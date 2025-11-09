@@ -334,7 +334,16 @@ def register_inventory_routes(app):
             except Exception as e:
                 yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
         
-        return Response(stream_with_context(generate()), mimetype='text/event-stream')
+        response = Response(
+            stream_with_context(generate()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no'  # Disable buffering for nginx
+            }
+        )
+        return response
     
     @app.route('/api/inventory/quantity-history', methods=['GET'])
     def get_quantity_history():
