@@ -1587,7 +1587,7 @@ def camera_proxy_websocket(ws):
                         frame_data = message.get('data')
                         if frame_data:
                             frame_id = message.get('frame_id', 'unknown')
-                            print(f"📥 Received frame {frame_id} from proxy ({len(frame_data)} chars base64)")
+                            # print(f"📥 Received frame {frame_id} from proxy ({len(frame_data)} chars base64)")
                             threading.Thread(
                                 target=process_proxy_frame,
                                 args=(frame_data,),
