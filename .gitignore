@@ -7,3 +7,5 @@ fresh-*-classification.zip
 .env
 *.db
 .DS_Store
+instance/
+detection_images/
