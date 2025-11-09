@@ -4,6 +4,7 @@
 
 # **EdgeCart**
 ## Predictive Waste Intelligence System
+### HackPrinceton 2025
 
 *Sometimes sustainability isn't about doing something grand—it's about starting small.*
 
