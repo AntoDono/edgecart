@@ -88,6 +88,9 @@ knot_client = get_knot_client()
 # Import them for backward compatibility
 from utils.helpers import admin_connections, customer_connections
 
+# Store frontend video stream connections for broadcasting
+frontend_video_connections = set()
+
 # Load fresh detection model globally (once at startup)
 fresh_model = None
 fresh_device = None
@@ -938,6 +941,9 @@ def stream_video_websocket(ws):
     streaming = False
     
     try:
+        # Register this frontend connection for proxy broadcasting
+        frontend_video_connections.add(ws)
+        
         # Send welcome message
         ws.send(json.dumps({
             'type': 'connected',
@@ -981,7 +987,7 @@ def stream_video_websocket(ws):
             
             # FPS calculation variables
             frame_times = []
-            detection_delta = 0.125
+            detection_delta = 0.25
             update_delta = 1
             last_updated_time = {}
             min_confidence = 0.6
@@ -1398,6 +1404,9 @@ def stream_video_websocket(ws):
     except Exception as e:
         print(f"Video stream WebSocket error: {e}")
     finally:
+        # Unregister frontend connection
+        frontend_video_connections.discard(ws)
+        
         # Properly cleanup: stop streaming first, wait for thread, then release camera
         streaming = False
         # Give the processing thread time to exit its loop
@@ -1409,6 +1418,160 @@ def stream_video_websocket(ws):
                 pass
             camera = None
         print("Video stream WebSocket disconnected")
+
+
+@sock.route('/ws/camera_proxy')
+def camera_proxy_websocket(ws):
+    """WebSocket endpoint for camera proxy - receives frames from laptop and processes them"""
+    import base64
+    import numpy as np
+    
+    proxy_connected = False
+    processing_thread = None
+    
+    try:
+        # Send welcome message
+        ws.send(json.dumps({
+            'type': 'connected',
+            'message': 'Camera proxy endpoint ready',
+            'timestamp': datetime.utcnow().isoformat()
+        }))
+        
+        def process_proxy_frame(frame_data_base64):
+            """Process frame from proxy and broadcast to frontend connections"""
+            try:
+                # Decode base64 frame
+                frame_bytes = base64.b64decode(frame_data_base64)
+                nparr = np.frombuffer(frame_bytes, np.uint8)
+                frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
+                if frame is None:
+                    print("⚠️ Failed to decode frame from proxy")
+                    return
+                
+                # Use the same processing logic as stream_video_websocket
+                # This is a simplified version - you can extract the full logic if needed
+                result = detect(frame, allowed_classes=['apple', 'banana', 'orange'], save=False, verbose=False)
+                detections = result['detections']
+                
+                # Process detections with freshness scores
+                processed_detections = []
+                min_confidence = 0.6
+                
+                for detection in detections:
+                    if detection['confidence'] < min_confidence:
+                        continue
+                    
+                    bbox = detection['bbox']
+                    class_name = detection['class']
+                    confidence = detection['confidence']
+                    
+                    # Get freshness score if model is loaded
+                    freshness_score = None
+                    if fresh_model is not None:
+                        cropped = crop_bounding_box(frame, bbox)
+                        if cropped is not None:
+                            freshness_score = get_freshness_score(cropped, fresh_model, fresh_device, fresh_transform)
+                    
+                    processed_detections.append({
+                        'bbox': bbox,
+                        'class': class_name,
+                        'confidence': float(confidence),
+                        'freshness_score': float(freshness_score) if freshness_score is not None else None
+                    })
+                
+                # Encode frame to JPEG
+                _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                frame_bytes = buffer.tobytes()
+                
+                # Broadcast to all frontend connections
+                clean_detections = []
+                for det in processed_detections:
+                    clean_detections.append({
+                        'bbox': det['bbox'],
+                        'class': det['class'],
+                        'confidence': det['confidence'],
+                        'freshness_score': det.get('freshness_score')
+                    })
+                
+                # Remove closed connections
+                frontend_video_connections.discard(None)
+                dead_connections = [conn for conn in frontend_video_connections if not hasattr(conn, 'send')]
+                for conn in dead_connections:
+                    frontend_video_connections.discard(conn)
+                
+                # Broadcast to all frontend connections
+                for frontend_ws in list(frontend_video_connections):
+                    try:
+                        # Send metadata
+                        frontend_ws.send(json.dumps({
+                            'type': 'frame_meta',
+                            'detections': clean_detections,
+                            'fps': 0.0,  # Could calculate from proxy if needed
+                            'frame_size': len(frame_bytes),
+                            'timestamp': datetime.utcnow().isoformat()
+                        }))
+                        # Send binary frame
+                        frontend_ws.send(frame_bytes)
+                    except Exception as e:
+                        # Remove dead connection
+                        frontend_video_connections.discard(frontend_ws)
+                        print(f"⚠️ Removed dead frontend connection: {e}")
+                
+            except Exception as e:
+                print(f"❌ Error processing proxy frame: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Listen for frames from proxy
+        proxy_connected = True
+        print("📹 Camera proxy connected")
+        
+        while proxy_connected:
+            try:
+                data = ws.receive()
+                if not data:
+                    continue
+                
+                try:
+                    message = json.loads(data)
+                    msg_type = message.get('type')
+                    
+                    if msg_type == 'frame':
+                        # Process frame in background thread
+                        frame_data = message.get('data')
+                        if frame_data:
+                            threading.Thread(
+                                target=process_proxy_frame,
+                                args=(frame_data,),
+                                daemon=True
+                            ).start()
+                    
+                    elif msg_type == 'proxy_connected':
+                        # Acknowledge proxy connection
+                        ws.send(json.dumps({
+                            'type': 'ack',
+                            'message': 'Proxy connection acknowledged'
+                        }))
+                    
+                    elif msg_type == 'ping':
+                        ws.send(json.dumps({'type': 'pong'}))
+                    
+                except json.JSONDecodeError:
+                    print("⚠️ Invalid JSON from camera proxy")
+                    
+            except Exception as e:
+                if proxy_connected:
+                    print(f"❌ Camera proxy error: {e}")
+                break
+        
+    except Exception as e:
+        print(f"❌ Camera proxy WebSocket error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        proxy_connected = False
+        print("📹 Camera proxy disconnected")
 
 
 # ============ Error Handlers ============

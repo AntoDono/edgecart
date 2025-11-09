@@ -12,3 +12,4 @@ fresh-*-classification.zip
 instance/
 detection_images/
 *.mov
+camera_proxy_config.json
