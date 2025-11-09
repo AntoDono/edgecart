@@ -1,6 +1,6 @@
 <div align="center">
 
-![EdgeCart Logo](frontend/public/edgecart.png)
+![EdgeCart Logo](frontend/public/edgecartwhite.png)
 
 # **EdgeCart**
 ## Predictive Waste Intelligence System
