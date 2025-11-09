@@ -159,7 +159,7 @@ const CustomerPortalContent = () => {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [notifications, setNotifications] = useState<WebSocketNotification[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(true);
   const [knotUserId, setKnotUserId] = useState('');
   const [syncLoading, setSyncLoading] = useState(false);
   const [purchases, setPurchases] = useState<Purchase[]>([]);

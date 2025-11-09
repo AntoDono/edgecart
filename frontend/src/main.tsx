@@ -20,8 +20,8 @@ import MobileTerminal from './components/MobileTerminal'
 import useIsMobile from './hooks/useIsMobile'
 import { RiAnthropicFill, RiGeminiFill, RiClaudeFill } from "react-icons/ri"
 import { BsTwitterX } from "react-icons/bs"
-import { SiOpenai, SiTypescript, SiOpencv, SiPytorch, SiTensorflow } from "react-icons/si"
-import { FaReact, FaPython, FaDigitalOcean } from "react-icons/fa"
+import { SiOpenai, SiTypescript, SiOpencv, SiPytorch, SiTensorflow, SiSnowflake } from "react-icons/si"
+import { FaReact, FaPython } from "react-icons/fa"
 import { TbBrandThreejs } from "react-icons/tb"
 
 function App() {
@@ -314,7 +314,7 @@ function App() {
             { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, color: '#ffffff', fontSize: '0.6em', opacity: 0.6 }}>✦</span> },
             { node: <SiTensorflow style={{ color: '#ffffff', fontSize: '0.8em', transform: 'translateY(5px)' }} /> },
             { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, color: '#ffffff', fontSize: '0.6em', opacity: 0.6 }}>✦</span> },
-            { node: <FaDigitalOcean style={{ color: '#ffffff', fontSize: '0.8em', transform: 'translateY(5px)' }} /> },
+            { node: <SiSnowflake style={{ color: '#ffffff', fontSize: '0.8em', transform: 'translateY(5px)' }} /> },
             { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, color: '#ffffff', fontSize: '0.6em', opacity: 0.6 }}>✦</span> },
             { node: <RiClaudeFill style={{ color: '#ffffff', transform: 'translateY(5px)' }} /> },
             { node: <span style={{ fontFamily: '"Geist Mono", monospace', fontWeight: 100, color: '#ffffff', fontSize: '0.6em', opacity: 0.6 }}>✦</span> },
