@@ -1,14 +1,14 @@
 <div align="center">
 
 ![EdgeCart Logo](frontend/public/edgecartwhite.png)
-
 # **EdgeCart**
 ## Predictive Waste Intelligence System
-### HackPrinceton 2025
 
 *Sometimes sustainability isn't about doing something grand—it's about starting small.*
 
 **We're tackling food waste, one produce shelf at a time.**
+
+### HackPrinceton 2025
 
 [![Made at HackPrinceton 2025](https://img.shields.io/badge/Made%20at-HackPrinceton%202025-orange.svg)](https://hackprinceton.com)
 [![Powered by Knot API](https://img.shields.io/badge/Powered%20by-Knot%20API-blue.svg)](https://knotapi.com)
