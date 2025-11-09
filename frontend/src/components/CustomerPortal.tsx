@@ -4,12 +4,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AwesomeButton } from 'react-awesome-button';
 import 'react-awesome-button/dist/styles.css';
 import { IoMdMan, IoMdWoman, IoMdPerson } from 'react-icons/io';
-import { GiStrawberry, GiOrange, GiGrapes } from 'react-icons/gi';
+import { GiStrawberry, GiOrange, GiGrapes, GiCherry, GiBanana, GiWatermelon, GiPineapple, GiLemon, GiPear, GiKiwiFruit, GiPeach } from 'react-icons/gi';
+import { MdEmail, MdShoppingCart, MdStore, MdAttachMoney, MdTrendingUp } from 'react-icons/md';
+import { FaLink, FaShoppingBag } from 'react-icons/fa';
+import { FaAppleWhole } from 'react-icons/fa6';
 import FaultyTerminal from './FaultyTerminal';
 import GradientText from './GradientText';
 import './CustomerPortal.css';
 import { config } from '../config';
 import { mockCustomers, mockRecommendations, mockPurchases, mockKnotTransactions } from '../mockData';
+import { createKnotSession, syncKnotTransactions, openKnotAuthModal, MERCHANTS } from '../knotAuth';
 
 // Error Boundary Component
 class ErrorBoundary extends Component<
@@ -161,6 +165,9 @@ const CustomerPortalContent = () => {
   const [knotTransactions, setKnotTransactions] = useState<KnotTransaction[]>([]);
   const [showTransactionType, setShowTransactionType] = useState<'edgecart' | 'knot'>('knot');
   const [welcomeStep, setWelcomeStep] = useState(0);
+  const [usingRealKnotData, setUsingRealKnotData] = useState(false);
+  const [knotConnecting, setKnotConnecting] = useState(false);
+  const [knotConnected, setKnotConnected] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -189,7 +196,19 @@ const CustomerPortalContent = () => {
         setCustomer(mockCustomer);
         setRecommendations(mockRecommendations[demoUser as keyof typeof mockRecommendations] || []);
         setPurchases(mockPurchases[demoUser as keyof typeof mockPurchases] || []);
-        setKnotTransactions(mockKnotTransactions[demoUser as keyof typeof mockKnotTransactions] || []);
+
+        // Fetch real Knot data in background
+        fetchRealKnotData(demoUser).then(realKnotData => {
+          if (realKnotData.length > 0) {
+            console.log('Loaded real Knot data on mount!');
+            setKnotTransactions(realKnotData);
+            setUsingRealKnotData(true);
+          } else {
+            setKnotTransactions(mockKnotTransactions[demoUser as keyof typeof mockKnotTransactions] || []);
+            setUsingRealKnotData(false);
+          }
+        });
+
         console.log('Loaded demo user from localStorage:', demoUser);
       }
     } else if (savedCustomerId) {
@@ -431,6 +450,60 @@ const CustomerPortalContent = () => {
     }, 1000);
   };
 
+  const fetchRealKnotData = async (userId: string) => {
+    console.log('Fetching real Knot data for user:', userId);
+
+    try {
+      // Fetch from Instacart (merchant_id: 40)
+      const response = await fetch('https://knot.tunnel.tel/transactions/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          merchant_id: 40,
+          external_user_id: userId,
+          limit: 10
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Real Knot data received:', data);
+
+        // Transform Knot transactions to our format
+        const knotTxs = data.transactions?.map((tx: any) => ({
+          id: tx.id || tx.externalId,
+          external_id: tx.externalId,
+          datetime: tx.dateTime,
+          url: tx.url,
+          order_status: tx.orderStatus,
+          price: {
+            sub_total: tx.price?.subTotal || '0.00',
+            total: tx.price?.total || '0.00',
+            currency: tx.price?.currency || 'USD'
+          },
+          products: tx.products?.map((p: any) => ({
+            external_id: p.externalId,
+            name: p.name,
+            quantity: p.quantity,
+            price: {
+              sub_total: p.price?.subTotal || '0.00',
+              total: p.price?.total || '0.00',
+              unit_price: p.price?.unitPrice || '0.00'
+            }
+          })) || []
+        })) || [];
+
+        return knotTxs;
+      } else {
+        console.error('Failed to fetch Knot data:', response.status);
+        return [];
+      }
+    } catch (error) {
+      console.error('Error fetching real Knot data:', error);
+      return [];
+    }
+  };
+
   const syncFromKnot = async () => {
     if (!knotUserId.trim()) {
       alert('Please enter a Knot user ID (e.g., "abc" for test)');
@@ -443,9 +516,12 @@ const CustomerPortalContent = () => {
     const isDemoAccount = knotUserId in mockCustomers;
 
     if (isDemoAccount) {
-      // Use mock data for demo accounts
-      console.log('Using mock data for demo account:', knotUserId);
+      // Use mock data for demo accounts, but try to fetch real Knot data too
+      console.log('Using demo account with real Knot data:', knotUserId);
       const mockCustomer = mockCustomers[knotUserId as keyof typeof mockCustomers];
+
+      // Fetch real Knot data in parallel
+      const realKnotData = await fetchRealKnotData(knotUserId);
 
       setTimeout(() => {
         createFadeTransition(() => {
@@ -458,10 +534,20 @@ const CustomerPortalContent = () => {
           setCustomer(mockCustomer);
           setRecommendations(mockRecommendations[knotUserId as keyof typeof mockRecommendations] || []);
           setPurchases(mockPurchases[knotUserId as keyof typeof mockPurchases] || []);
-          setKnotTransactions(mockKnotTransactions[knotUserId as keyof typeof mockKnotTransactions] || []);
+
+          // Use real Knot data if available, otherwise fall back to mock
+          if (realKnotData.length > 0) {
+            console.log('Using real Knot transaction data!');
+            setKnotTransactions(realKnotData);
+            setUsingRealKnotData(true);
+          } else {
+            console.log('Falling back to mock Knot data');
+            setKnotTransactions(mockKnotTransactions[knotUserId as keyof typeof mockKnotTransactions] || []);
+            setUsingRealKnotData(false);
+          }
         });
         setSyncLoading(false);
-      }, 500); // Small delay for UX
+      }, 500);
       return;
     }
 
@@ -505,6 +591,73 @@ const CustomerPortalContent = () => {
     }
   };
 
+  const connectKnotAccount = async () => {
+    if (!customer) return;
+
+    setKnotConnecting(true);
+
+    try {
+      // Create Knot session - don't specify merchant, let user choose
+      console.log('Creating Knot session for user:', customer.knot_customer_id || customer.email);
+      const session = await createKnotSession(
+        customer.knot_customer_id || customer.email
+        // No merchant_id - user picks in Knot UI
+      );
+
+      console.log('Opening Knot SDK...');
+      // Open Knot SDK and wait for completion
+      const result = await openKnotAuthModal(session.session_token);
+
+      if (result.success && result.merchantId) {
+        console.log('✅ Knot account connected! Syncing transactions...');
+        setKnotConnected(true);
+
+        // Sync transactions after successful connection using the merchant ID from auth
+        const txData = await syncKnotTransactions(
+          customer.knot_customer_id || customer.email,
+          result.merchantId,
+          undefined,
+          20
+        );
+
+        // Transform Knot API response to our format
+        const knotTxs = txData.transactions?.map((tx: any) => ({
+          id: tx.id || tx.externalId,
+          external_id: tx.externalId || tx.external_id,
+          datetime: tx.dateTime || tx.datetime,
+          url: tx.url,
+          order_status: tx.orderStatus || tx.order_status,
+          price: {
+            sub_total: tx.price?.subTotal || tx.price?.sub_total || '0.00',
+            total: tx.price?.total || '0.00',
+            currency: tx.price?.currency || 'USD'
+          },
+          products: tx.products?.map((p: any) => ({
+            external_id: p.externalId || p.external_id,
+            name: p.name,
+            quantity: p.quantity,
+            price: {
+              sub_total: p.price?.subTotal || p.price?.sub_total || '0.00',
+              total: p.price?.total || '0.00',
+              unit_price: p.price?.unitPrice || p.price?.unit_price || '0.00'
+            }
+          })) || []
+        })) || [];
+
+        setKnotTransactions(knotTxs);
+        setUsingRealKnotData(true);
+        console.log('✅ Loaded', knotTxs.length, 'real Knot transactions!');
+      } else {
+        console.log('❌ User cancelled Knot authentication');
+      }
+    } catch (error) {
+      console.error('❌ Error connecting Knot account:', error);
+      alert('Failed to connect Knot account. Please try again.');
+    } finally {
+      setKnotConnecting(false);
+    }
+  };
+
   const logout = () => {
     setCustomerId(null);
     setCustomer(null);
@@ -512,6 +665,8 @@ const CustomerPortalContent = () => {
     setNotifications([]);
     setPurchases([]);
     setKnotTransactions([]);
+    setKnotConnected(false);
+    setUsingRealKnotData(false);
     localStorage.removeItem('edgecart_customer_id');
     localStorage.removeItem('edgecart_demo_user');
     if (wsRef.current) {
@@ -543,6 +698,42 @@ const CustomerPortalContent = () => {
       'expired': 'Expired'
     };
     return labels[status] || status;
+  };
+
+  const getFruitIcon = (fruit: string) => {
+    const fruitLower = fruit.toLowerCase();
+    if (fruitLower.includes('strawberry') || fruitLower.includes('berry')) return <GiStrawberry />;
+    if (fruitLower.includes('orange')) return <GiOrange />;
+    if (fruitLower.includes('grape')) return <GiGrapes />;
+    if (fruitLower.includes('cherry')) return <GiCherry />;
+    if (fruitLower.includes('banana')) return <GiBanana />;
+    if (fruitLower.includes('watermelon')) return <GiWatermelon />;
+    if (fruitLower.includes('pineapple')) return <GiPineapple />;
+    if (fruitLower.includes('lemon') || fruitLower.includes('grapefruit')) return <GiLemon />;
+    if (fruitLower.includes('pear')) return <GiPear />;
+    if (fruitLower.includes('apple')) return <FaAppleWhole />;
+    if (fruitLower.includes('kiwi')) return <GiKiwiFruit />;
+    if (fruitLower.includes('peach')) return <GiPeach />;
+    if (fruitLower.includes('dragon')) return <GiKiwiFruit />;
+    return <FaAppleWhole />; // default
+  };
+
+  const getFruitColor = (fruit: string) => {
+    const fruitLower = fruit.toLowerCase();
+    if (fruitLower.includes('strawberry') || fruitLower.includes('cherry')) return '#ff4757';
+    if (fruitLower.includes('orange') || fruitLower.includes('grapefruit')) return '#ffa502';
+    if (fruitLower.includes('grape')) return '#a55eea';
+    if (fruitLower.includes('banana')) return '#ffd700';
+    if (fruitLower.includes('watermelon')) return '#ff6b81';
+    if (fruitLower.includes('pineapple')) return '#f9ca24';
+    if (fruitLower.includes('lemon')) return '#f9ca24';
+    if (fruitLower.includes('pear') || fruitLower.includes('apple')) return '#7bed9f';
+    if (fruitLower.includes('kiwi')) return '#7bed9f';
+    if (fruitLower.includes('peach')) return '#ffbe76';
+    if (fruitLower.includes('dragon')) return '#ff6348';
+    if (fruitLower.includes('blueberry')) return '#5f27cd';
+    if (fruitLower.includes('spinach') || fruitLower.includes('kale')) return '#2ed573';
+    return '#7ECA9C'; // default mint
   };
 
   // Memoize FaultyTerminal props to prevent re-creation on re-renders
@@ -796,107 +987,165 @@ const CustomerPortalContent = () => {
 
       {/* Main Content */}
       <div className="portal-content">
-        {/* Customer Info Section */}
+        {/* Customer Info Section - Terminal Style */}
         <section className="customer-info-section">
-          <div className="info-card">
-            <h2>
-              <GradientText
-                colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
-                animationSpeed={4}
-                showBorder={false}
-              >
-                YOUR PROFILE
-              </GradientText>
-            </h2>
-            <div className="customer-details">
-              <div className="customer-info-left">
-                <p><strong>Name:</strong> {customer.name}</p>
-                <p><strong>Email:</strong> {customer.email}</p>
-                {customer.knot_customer_id && (
-                  <p className="knot-badge">
-                    Connected via Knot API
-                  </p>
-                )}
+          <div className="profile-terminal">
+            <div className="portal-terminal-header">
+              <div className="terminal-buttons">
+                <span className="terminal-button close"></span>
+                <span className="terminal-button minimize"></span>
+                <span className="terminal-button maximize"></span>
               </div>
-              <div className="customer-icon-right">
-                <IoMdPerson />
-              </div>
+              <div className="terminal-title">customer@edgecart:~/{customer.knot_customer_id || 'profile'}</div>
             </div>
-          </div>
+            <div className="portal-terminal-body" style={{ padding: '1.5rem' }}>
+              <div className="terminal-section">
+                <div className="terminal-prompt-line">
+                  <span className="terminal-prefix">$</span>
+                  <span className="terminal-command">whoami</span>
+                </div>
 
-          {/* Preferences from Knot */}
-          {customer.preferences && (
-            <div className="info-card preferences-card">
-              <h2>
-                <GradientText
-                  colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
-                  animationSpeed={4}
-                  showBorder={false}
-                >
-                  YOUR SHOPPING
-                </GradientText>
-              </h2>
-              
-              {customer.preferences.favorite_fruits && customer.preferences.favorite_fruits.length > 0 && (
-                <div className="preference-section">
-                  <h3>Favorite Fruits</h3>
-                  <div className="fruit-tags">
-                    {customer.preferences.favorite_fruits.map((fruit, idx) => (
-                      <span key={idx} className="fruit-tag">
-                        {fruit}
-                      </span>
-                    ))}
+                <div className="profile-header-section">
+                  {/* User Avatar */}
+                  <div className="user-avatar">
+                    <GiOrange className="avatar-icon" />
+                  </div>
+
+                  {/* User Info */}
+                  <div className="profile-info-grid">
+                    <div className="profile-info-item">
+                      <div className="info-content">
+                        <span className="info-label">name</span>
+                        <span className="info-value">{customer.name}</span>
+                      </div>
+                    </div>
+                    <div className="profile-info-item">
+                      <div className="info-content">
+                        <span className="info-label">email</span>
+                        <span className="info-value">{customer.email}</span>
+                      </div>
+                    </div>
+                    {customer.knot_customer_id && (
+                      <div className="profile-info-item">
+                        <FaLink className="info-icon-small" style={{ color: '#7ECA9C' }} />
+                        <div className="info-content">
+                          <span className="info-label">knot id</span>
+                          <span className="info-value knot-id-value">{customer.knot_customer_id}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
 
-              <div className="stats-grid">
-                {customer.preferences.average_spend && (
-                  <div className="stat">
-                    <span className="stat-label">Avg. Spend</span>
-                    <span className="stat-value">${customer.preferences.average_spend.toFixed(2)}</span>
-                  </div>
-                )}
-                
-                {customer.preferences.total_transactions && (
-                  <div className="stat">
-                    <span className="stat-label">Purchases</span>
-                    <span className="stat-value">{customer.preferences.total_transactions}</span>
-                  </div>
-                )}
-
-                {customer.preferences.merchants_used && customer.preferences.merchants_used.length > 0 && (
-                  <div className="stat full-width">
-                    <span className="stat-label">Shops At</span>
-                    <span className="stat-value merchant-list">
-                      {customer.preferences.merchants_used.join(', ')}
-                    </span>
-                  </div>
-                )}
+                {/* Connect Knot Button */}
+                <div style={{ marginTop: '1rem' }}>
+                  <button
+                    onClick={connectKnotAccount}
+                    disabled={knotConnecting || knotConnected}
+                    className="connect-knot-btn terminal-button-style"
+                  >
+                    {knotConnecting ? '> connecting...' : knotConnected ? '✓ account connected' : '> connect grocery account'}
+                  </button>
+                </div>
               </div>
+
+              {/* Shopping Preferences */}
+              {customer.preferences && (
+                <>
+                  <div className="terminal-divider">─────────────────────────────────────</div>
+
+                  <div className="terminal-section">
+                    <div className="terminal-prompt-line">
+                      <span className="terminal-prefix">$</span>
+                      <span className="terminal-command">cat shopping_preferences</span>
+                    </div>
+
+                    {customer.preferences.favorite_fruits && customer.preferences.favorite_fruits.length > 0 && (
+                      <div className="preference-section">
+                        <div className="section-label">favorite fruits</div>
+                        <div className="fruit-tags-terminal">
+                          {customer.preferences.favorite_fruits.map((fruit, idx) => (
+                            <div
+                              key={idx}
+                              className="fruit-tag-terminal"
+                              style={{
+                                borderColor: getFruitColor(fruit),
+                                color: getFruitColor(fruit)
+                              }}
+                            >
+                              <span className="fruit-icon" style={{ color: getFruitColor(fruit) }}>
+                                {getFruitIcon(fruit)}
+                              </span>
+                              <span className="fruit-name">{fruit}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="stats-grid-terminal">
+                      {customer.preferences.average_spend && (
+                        <div className="stat-terminal">
+                          <MdAttachMoney className="stat-icon" style={{ color: '#7ECA9C' }} />
+                          <div className="stat-content">
+                            <span className="stat-label">avg spend</span>
+                            <span className="stat-value-terminal">${customer.preferences.average_spend.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {customer.preferences.total_transactions && (
+                        <div className="stat-terminal">
+                          <MdShoppingCart className="stat-icon" style={{ color: '#AAF0D1' }} />
+                          <div className="stat-content">
+                            <span className="stat-label">total purchases</span>
+                            <span className="stat-value-terminal">{customer.preferences.total_transactions}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {customer.preferences.merchants_used && customer.preferences.merchants_used.length > 0 && (
+                        <div className="stat-terminal full-width-terminal">
+                          <MdStore className="stat-icon" style={{ color: '#CCFFBD' }} />
+                          <div className="stat-content">
+                            <span className="stat-label">merchants</span>
+                            <span className="stat-value-terminal merchant-list">
+                              {customer.preferences.merchants_used.join(', ')}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-          )}
+          </div>
         </section>
 
         {/* Recommendations Section */}
         <section className="recommendations-section">
-          <h2>
-            <GradientText
-              colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
-              animationSpeed={4}
-              showBorder={false}
-            >
-              PERSONALIZED DEALS FOR YOU
-            </GradientText>
-          </h2>
-          
-          {recommendations.length === 0 ? (
-            <div className="empty-state">
-              <p>No deals right now. We'll notify you when items you like go on sale!</p>
-              <p className="hint">Connected via Knot - we know what you love to buy</p>
+          <div className="dark-container orange-container">
+            <div className="dark-container-header">
+              <h2 className="dark-container-title">
+                <GradientText
+                  colors={['#ffa502', '#ff6348', '#ff4757', '#ff6348', '#ffa502']}
+                  animationSpeed={4}
+                  showBorder={false}
+                >
+                  personalized deals
+                </GradientText>
+              </h2>
+              <span className="deal-count orange-badge">{recommendations.length} deals</span>
             </div>
-          ) : (
-            <div className="recommendations-grid">
+
+            {recommendations.length === 0 ? (
+              <div className="empty-state-dark">
+                <p>no deals right now. we'll notify you when items you like go on sale!</p>
+                <p className="hint">connected via knot - we know what you love to buy</p>
+              </div>
+            ) : (
+              <div className="recommendations-grid">
               {recommendations.map((rec) => (
                 <div 
                   key={rec.id} 
@@ -958,25 +1207,22 @@ const CustomerPortalContent = () => {
                   {rec.purchased && (
                     <div className="purchased-badge">Purchased</div>
                   )}
-                </div>
-              ))}
-            </div>
-          )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Live Notifications */}
         {notifications.length > 0 && (
           <section className="notifications-section">
-            <h2>
-              <GradientText
-                colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
-                animationSpeed={4}
-                showBorder={false}
-              >
-                LIVE UPDATES
-              </GradientText>
-            </h2>
-            <div className="notifications-list">
+            <div className="dark-container">
+              <div className="dark-container-header">
+                <h2 className="dark-container-title">live updates</h2>
+                <span className="deal-count">{notifications.length} updates</span>
+              </div>
+              <div className="notifications-list">
               {notifications.map((notif, idx) => (
                 <div key={idx} className="notification-item">
                   <span className="notif-type">{notif.type}</span>
@@ -986,50 +1232,61 @@ const CustomerPortalContent = () => {
                   <pre className="notif-data">
                     {JSON.stringify(notif.data, null, 2)}
                   </pre>
-                </div>
-              ))}
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         )}
 
         {/* Transaction History */}
         <section className="transactions-section">
-          <div className="section-header">
-            <h2>
-              <GradientText
-                colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
-                animationSpeed={4}
-                showBorder={false}
-              >
-                TRANSACTION HISTORY
-              </GradientText>
-            </h2>
-            <div className="transaction-toggle">
-              <button 
-                className={`toggle-btn ${showTransactionType === 'knot' ? 'active' : ''}`}
-                onClick={() => setShowTransactionType('knot')}
-              >
-                Knot Purchases ({knotTransactions.length})
-              </button>
-              <button
-                className={`toggle-btn ${showTransactionType === 'edgecart' ? 'active' : ''}`}
-                onClick={() => setShowTransactionType('edgecart')}
-              >
-                EdgeCart Purchases ({purchases.length})
-              </button>
+          <div className="profile-terminal">
+            <div className="portal-terminal-header">
+              <div className="terminal-buttons">
+                <span className="terminal-button close"></span>
+                <span className="terminal-button minimize"></span>
+                <span className="terminal-button maximize"></span>
+              </div>
+              <div className="terminal-title">transactions@edgecart:~/history</div>
             </div>
-          </div>
-
-          {/* Knot Transactions */}
-          {showTransactionType === 'knot' && (
-            <div className="transactions-list">
-              {knotTransactions.length === 0 ? (
-                <div className="empty-state">
-                  <p>No Knot transaction history available</p>
-                  <p className="hint">Connect your Knot account to see purchase history</p>
+            <div className="portal-terminal-body" style={{ padding: '1.5rem' }}>
+              <div className="terminal-section">
+                <div className="terminal-prompt-line">
+                  <span className="terminal-prefix">$</span>
+                  <span className="terminal-command">ls -la transactions/</span>
                 </div>
-              ) : (
-                <div className="scrollable-transactions">
+
+                {/* Transaction Toggle */}
+                <div className="transaction-toggle-terminal">
+                  <button
+                    className={`toggle-btn-terminal ${showTransactionType === 'knot' ? 'active' : ''}`}
+                    onClick={() => setShowTransactionType('knot')}
+                  >
+                    <MdStore style={{ fontSize: '1.2rem' }} />
+                    <span>knot purchases ({knotTransactions.length})</span>
+                    {usingRealKnotData && <span className="real-data-badge-terminal">live</span>}
+                  </button>
+                  <button
+                    className={`toggle-btn-terminal ${showTransactionType === 'edgecart' ? 'active' : ''}`}
+                    onClick={() => setShowTransactionType('edgecart')}
+                  >
+                    <FaShoppingBag style={{ fontSize: '1rem' }} />
+                    <span>edgecart purchases ({purchases.length})</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Knot Transactions */}
+              {showTransactionType === 'knot' && (
+                <div className="transactions-list-terminal">
+                  {knotTransactions.length === 0 ? (
+                    <div className="empty-state-terminal">
+                      <p>no knot transaction history available</p>
+                      <p className="hint">connect your knot account to see purchase history</p>
+                    </div>
+                  ) : (
+                    <div className="scrollable-transactions-terminal">
                   {knotTransactions.map((transaction, idx) => (
                     <div key={transaction.id || `knot-tx-${idx}`} className="transaction-card knot-transaction">
                       <div className="transaction-header">
@@ -1081,22 +1338,22 @@ const CustomerPortalContent = () => {
                         From Knot API
                       </div>
                     </div>
-                  ))}
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* EdgeCart Purchases */}
-          {showTransactionType === 'edgecart' && (
-            <div className="transactions-list">
-              {purchases.length === 0 ? (
-                <div className="empty-state">
-                  <p>No EdgeCart purchases yet</p>
-                  <p className="hint">Your purchases from our store will appear here</p>
-                </div>
-              ) : (
-                <div className="scrollable-transactions">
+              {/* EdgeCart Purchases */}
+              {showTransactionType === 'edgecart' && (
+                <div className="transactions-list-terminal">
+                  {purchases.length === 0 ? (
+                    <div className="empty-state-terminal">
+                      <p>no edgecart purchases yet</p>
+                      <p className="hint">your purchases from our store will appear here</p>
+                    </div>
+                  ) : (
+                    <div className="scrollable-transactions-terminal">
                   {purchases.map((purchase) => (
                     <div key={purchase.id} className="transaction-card edgecart-transaction">
                       <div className="transaction-header">
@@ -1136,25 +1393,30 @@ const CustomerPortalContent = () => {
                         EdgeCart Purchase
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </section>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
         {/* Savings Summary */}
         <section className="savings-section">
-          <h2>
-            <GradientText
-              colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
-              animationSpeed={4}
-              showBorder={false}
-            >
-              YOUR SAVINGS
-            </GradientText>
-          </h2>
-          <div className="savings-grid">
+          <div className="dark-container blue-container">
+            <div className="dark-container-header">
+              <h2 className="dark-container-title">
+                <GradientText
+                  colors={['#5f27cd', '#a55eea', '#5f27cd']}
+                  animationSpeed={4}
+                  showBorder={false}
+                >
+                  your savings
+                </GradientText>
+              </h2>
+            </div>
+            <div className="savings-grid">
             <div className="saving-card">
               <div className="saving-value">
                 ${recommendations.reduce((sum, rec) => 
@@ -1182,6 +1444,7 @@ const CustomerPortalContent = () => {
               <div className="saving-value">🌍</div>
               <div className="saving-label">
                 Helping reduce food waste
+                </div>
               </div>
             </div>
           </div>
@@ -1189,16 +1452,19 @@ const CustomerPortalContent = () => {
 
         {/* How It Works */}
         <section className="how-it-works">
-          <h2>
-            <GradientText
-              colors={['#7ECA9C', '#AAF0D1', '#CCFFBD', '#AAF0D1', '#7ECA9C']}
-              animationSpeed={4}
-              showBorder={false}
-            >
-              HOW EDGECART HELPS YOU SAVE
-            </GradientText>
-          </h2>
-          <div className="steps-grid">
+          <div className="dark-container orange-container">
+            <div className="dark-container-header">
+              <h2 className="dark-container-title">
+                <GradientText
+                  colors={['#ffa502', '#ff6348', '#ff4757', '#ff6348', '#ffa502']}
+                  animationSpeed={4}
+                  showBorder={false}
+                >
+                  how it works
+                </GradientText>
+              </h2>
+            </div>
+            <div className="steps-grid">
             <div className="step">
               <h3>1. Connect Accounts</h3>
               <p>We analyze your Instacart & grocery purchases via Knot</p>
@@ -1214,6 +1480,7 @@ const CustomerPortalContent = () => {
             <div className="step">
               <h3>4. Get Deals</h3>
               <p>Receive notifications for discounts on items you actually buy!</p>
+              </div>
             </div>
           </div>
         </section>

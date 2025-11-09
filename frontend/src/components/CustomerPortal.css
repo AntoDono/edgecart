@@ -417,6 +417,34 @@
   min-height: 100px;
 }
 
+.connect-knot-btn {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background: rgba(126, 202, 156, 0.1);
+  border: 1px solid rgba(126, 202, 156, 0.3);
+  border-radius: 8px;
+  color: #7ECA9C;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.connect-knot-btn:hover:not(:disabled) {
+  background: rgba(126, 202, 156, 0.2);
+  border-color: #7ECA9C;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(126, 202, 156, 0.2);
+}
+
+.connect-knot-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .knot-badge {
   display: inline-flex;
   align-items: center;
@@ -809,6 +837,25 @@
 .toggle-btn.active {
   background: rgba(126, 202, 156, 0.15);
   color: #7ECA9C;
+}
+
+.real-data-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  background: rgba(254, 128, 25, 0.2);
+  border: 1px solid rgba(254, 128, 25, 0.5);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fe8019;
+  letter-spacing: 0.05em;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .transactions-list {
@@ -1658,5 +1705,715 @@
 
   .like-icon {
     font-size: 0.85rem;
+  }
+}
+
+/* Terminal-Style Profile Container - Match Login Style */
+.profile-terminal {
+  background: rgba(10, 20, 10, 0.95);
+  border: 1px solid rgba(126, 202, 156, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.terminal-section {
+  margin-bottom: 1.5rem;
+}
+
+.terminal-section:last-child {
+  margin-bottom: 0;
+}
+
+.terminal-prompt-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+  color: #7ECA9C;
+}
+
+.terminal-command {
+  color: #AAF0D1;
+  font-weight: 500;
+}
+
+.terminal-divider {
+  color: rgba(126, 202, 156, 0.2);
+  margin: 1.5rem 0;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+/* Profile Header Section with Avatar */
+.profile-header-section {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.user-avatar {
+  flex-shrink: 0;
+  width: 100px;
+  height: 100px;
+  background: linear-gradient(135deg, #ffa502 0%, #ff6348 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid rgba(255, 165, 2, 0.3);
+  box-shadow: 0 4px 20px rgba(255, 165, 2, 0.4);
+  transition: all 0.3s;
+}
+
+.user-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 30px rgba(255, 165, 2, 0.6);
+}
+
+.avatar-icon {
+  font-size: 3.5rem;
+  color: #ffe5cc;
+}
+
+/* Profile Info Grid */
+.profile-info-grid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-info-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  transition: all 0.3s;
+}
+
+.profile-info-item:hover {
+  transform: translateX(4px);
+}
+
+.info-icon-small {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.info-label {
+  font-size: 0.7rem;
+  color: #7ECA9C;
+  text-transform: lowercase;
+  font-family: 'Geist Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+.info-value {
+  font-size: 1.1rem;
+  color: #e0e0e0;
+  font-weight: 500;
+}
+
+.knot-id-value {
+  color: #7ECA9C;
+  font-family: 'Geist Mono', monospace;
+}
+
+/* Terminal Button Style */
+.terminal-button-style {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  background: rgba(126, 202, 156, 0.1);
+  border: 1px solid rgba(126, 202, 156, 0.3);
+  border-radius: 6px;
+  color: #7ECA9C;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-transform: lowercase;
+}
+
+.terminal-button-style:hover:not(:disabled) {
+  background: rgba(126, 202, 156, 0.2);
+  border-color: #7ECA9C;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(126, 202, 156, 0.2);
+}
+
+.terminal-button-style:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Section Labels */
+.section-label {
+  color: #AAF0D1;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+  font-family: 'Geist Mono', monospace;
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+}
+
+/* Fruit Tags Terminal */
+.fruit-tags-terminal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.fruit-tag-terminal {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  transition: all 0.3s;
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.fruit-tag-terminal:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  filter: brightness(1.2);
+}
+
+.fruit-icon {
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.fruit-name {
+  font-family: 'Geist Mono', monospace;
+  font-weight: 500;
+}
+
+/* Stats Grid Terminal */
+.stats-grid-terminal {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.stat-terminal {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(126, 202, 156, 0.2);
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.stat-terminal:hover {
+  border-color: rgba(126, 202, 156, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(126, 202, 156, 0.1);
+}
+
+.stat-terminal.full-width-terminal {
+  grid-column: 1 / -1;
+}
+
+.stat-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+}
+
+.stat-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #7ECA9C;
+  text-transform: lowercase;
+  font-family: 'Geist Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+.stat-value-terminal {
+  font-size: 1.2rem;
+  color: #e0e0e0;
+  font-weight: 600;
+  font-family: 'Geist Mono', monospace;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive adjustments for terminal style */
+@media (max-width: 768px) {
+  .profile-header-section {
+    gap: 1rem;
+  }
+
+  .user-avatar {
+    width: 70px;
+    height: 70px;
+  }
+
+  .avatar-icon {
+    font-size: 2.2rem;
+  }
+
+  .profile-info-grid {
+    width: 100%;
+  }
+
+  .stats-grid-terminal {
+    grid-template-columns: 1fr;
+  }
+
+  .fruit-tags-terminal {
+    margin-left: 0;
+  }
+
+  .fruit-tag-terminal {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+  }
+
+  .fruit-icon {
+    font-size: 1rem;
+  }
+}
+
+/* Transaction Toggle Terminal */
+.transaction-toggle-terminal {
+  display: flex;
+  gap: 1rem;
+  margin: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.toggle-btn-terminal {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(126, 202, 156, 0.2);
+  border-radius: 6px;
+  color: #888;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  text-transform: lowercase;
+}
+
+.toggle-btn-terminal:hover {
+  border-color: rgba(126, 202, 156, 0.4);
+  transform: translateY(-2px);
+}
+
+.toggle-btn-terminal.active {
+  background: rgba(126, 202, 156, 0.15);
+  border-color: #7ECA9C;
+  color: #7ECA9C;
+}
+
+.real-data-badge-terminal {
+  padding: 0.15rem 0.5rem;
+  background: #7ECA9C;
+  color: #0a0f0a;
+  border-radius: 10px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Transaction Lists Terminal */
+.transactions-list-terminal {
+  margin-top: 1.5rem;
+}
+
+.empty-state-terminal {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: #888;
+}
+
+.empty-state-terminal p {
+  margin: 0.5rem 0;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.9rem;
+  text-transform: lowercase;
+}
+
+.empty-state-terminal .hint {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.scrollable-transactions-terminal {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.scrollable-transactions-terminal::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable-transactions-terminal::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.scrollable-transactions-terminal::-webkit-scrollbar-thumb {
+  background: rgba(126, 202, 156, 0.3);
+  border-radius: 3px;
+}
+
+.scrollable-transactions-terminal::-webkit-scrollbar-thumb:hover {
+  background: rgba(126, 202, 156, 0.5);
+}
+
+@media (max-width: 768px) {
+  .transaction-toggle-terminal {
+    flex-direction: column;
+  }
+
+  .toggle-btn-terminal {
+    min-width: 100%;
+  }
+}
+
+/* Dark Container Style - For non-terminal sections */
+.dark-container {
+  background: rgba(5, 10, 5, 0.85);
+  border: 1px solid rgba(126, 202, 156, 0.15);
+  border-radius: 12px;
+  padding: 2rem;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* Orange Theme for Recommendations & How It Works */
+.orange-container {
+  border: 1px solid rgba(255, 165, 2, 0.2);
+  box-shadow: 0 8px 32px rgba(255, 100, 50, 0.15);
+}
+
+.orange-container .dark-container-header {
+  border-bottom: 1px solid rgba(255, 165, 2, 0.15);
+}
+
+.orange-container .recommendation-card,
+.orange-container .step {
+  border: 1px solid rgba(255, 165, 2, 0.2);
+}
+
+.orange-container .recommendation-card:hover,
+.orange-container .step:hover {
+  border-color: rgba(255, 165, 2, 0.5);
+  box-shadow: 0 8px 24px rgba(255, 100, 50, 0.2);
+}
+
+.orange-container .recommendation-card.new {
+  border-color: #ffa502;
+  box-shadow: 0 4px 16px rgba(255, 100, 50, 0.3);
+}
+
+.orange-container .step h3 {
+  color: #ffa502;
+}
+
+.orange-container .step p {
+  color: #ffbe76;
+}
+
+/* Blue/Purple Theme for Savings */
+.blue-container {
+  border: 1px solid rgba(95, 39, 205, 0.2);
+  box-shadow: 0 8px 32px rgba(95, 39, 205, 0.15);
+}
+
+.blue-container .dark-container-header {
+  border-bottom: 1px solid rgba(95, 39, 205, 0.15);
+}
+
+.blue-container .saving-card {
+  border: 1px solid rgba(165, 94, 234, 0.2);
+}
+
+.blue-container .saving-card:hover {
+  border-color: rgba(165, 94, 234, 0.5);
+  box-shadow: 0 8px 24px rgba(95, 39, 205, 0.2);
+}
+
+.blue-container .saving-value {
+  color: #a55eea;
+}
+
+.blue-container .saving-label {
+  color: #b794f4;
+}
+
+.dark-container-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(126, 202, 156, 0.1);
+}
+
+.dark-container-title {
+  font-size: 1.3rem;
+  color: #7ECA9C;
+  font-family: 'Geist Mono', monospace;
+  font-weight: 500;
+  text-transform: lowercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.deal-count {
+  padding: 0.3rem 0.9rem;
+  background: rgba(126, 202, 156, 0.1);
+  border: 1px solid rgba(126, 202, 156, 0.25);
+  border-radius: 20px;
+  color: #7ECA9C;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
+.orange-badge {
+  background: rgba(255, 165, 2, 0.1);
+  border-color: rgba(255, 165, 2, 0.3);
+  color: #ffa502;
+}
+
+.empty-state-dark {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #666;
+}
+
+.empty-state-dark p {
+  margin: 0.5rem 0;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.95rem;
+  text-transform: lowercase;
+}
+
+.empty-state-dark .hint {
+  font-size: 0.85rem;
+  color: #555;
+  margin-top: 1rem;
+}
+
+/* Recommendation Cards - Darker Style */
+.recommendations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.recommendation-card {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(126, 202, 156, 0.2);
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: all 0.3s;
+  position: relative;
+}
+
+.recommendation-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(126, 202, 156, 0.4);
+  box-shadow: 0 8px 24px rgba(126, 202, 156, 0.1);
+}
+
+.recommendation-card.new {
+  border-color: #7ECA9C;
+  box-shadow: 0 4px 16px rgba(126, 202, 156, 0.2);
+}
+
+/* Savings Cards - Darker Style */
+.savings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.saving-card {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(126, 202, 156, 0.2);
+  border-radius: 8px;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  transition: all 0.3s;
+}
+
+.saving-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(126, 202, 156, 0.4);
+  box-shadow: 0 8px 24px rgba(126, 202, 156, 0.1);
+}
+
+.saving-value {
+  font-size: 2.5rem;
+  color: #7ECA9C;
+  font-weight: 700;
+  font-family: 'Geist Mono', monospace;
+  margin-bottom: 0.5rem;
+}
+
+.saving-label {
+  font-size: 0.85rem;
+  color: #AAF0D1;
+  text-transform: lowercase;
+  font-family: 'Geist Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+.saving-card.impact .saving-value {
+  font-size: 3rem;
+}
+
+/* Steps Grid - Darker Style */
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.step {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(126, 202, 156, 0.2);
+  border-radius: 8px;
+  padding: 2rem 1.5rem;
+  transition: all 0.3s;
+}
+
+.step:hover {
+  transform: translateY(-4px);
+  border-color: rgba(126, 202, 156, 0.4);
+  box-shadow: 0 8px 24px rgba(126, 202, 156, 0.1);
+}
+
+.step h3 {
+  color: #7ECA9C;
+  font-family: 'Geist Mono', monospace;
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+  text-transform: lowercase;
+}
+
+.step p {
+  color: #AAF0D1;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Notification Items - Darker Style */
+.notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.notification-item {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(126, 202, 156, 0.2);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.notif-type {
+  color: #7ECA9C;
+  font-family: 'Geist Mono', monospace;
+  font-size: 0.85rem;
+  text-transform: lowercase;
+  font-weight: 600;
+}
+
+.notif-time {
+  color: #666;
+  font-size: 0.75rem;
+  font-family: 'Geist Mono', monospace;
+  margin-left: 1rem;
+}
+
+.notif-data {
+  color: #AAF0D1;
+  font-size: 0.8rem;
+  margin-top: 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .dark-container {
+    padding: 1.5rem;
+  }
+
+  .dark-container-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .recommendations-grid,
+  .savings-grid,
+  .steps-grid {
+    grid-template-columns: 1fr;
   }
 }
