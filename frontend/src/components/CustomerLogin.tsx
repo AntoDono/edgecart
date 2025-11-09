@@ -209,6 +209,9 @@ const CustomerLogin = () => {
             interactive={true}
           />
         </div>
+        <div className="gifs-container">
+          <img src="/userflow.gif" alt="User Flow" className="demo-gif" />
+        </div>
       </div>
 
       {/* Mobile branding - shown only on mobile inside terminal */}

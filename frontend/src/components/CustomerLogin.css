@@ -54,6 +54,42 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+}
+
+.customer-login .gifs-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 1rem;
+  z-index: 2;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 6px;
+  backdrop-filter: blur(10px);
+  max-width: 90%;
+  max-height: 90%;
+}
+
+.customer-login .demo-gif {
+  height: 160px;
+  width: auto;
+  border-radius: 4px;
+  border: 1px solid rgba(170, 240, 209, 0.2);
+  object-fit: contain;
+}
+
+.customer-login .demo-gif-left {
+  order: 1;
+}
+
+.customer-login .demo-gif-right {
+  order: 2;
 }
 
 /* Terminal */

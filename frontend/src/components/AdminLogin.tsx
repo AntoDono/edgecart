@@ -177,6 +177,9 @@ const AdminLogin = () => {
             interactive={true}
           />
         </div>
+        <div className="gifs-container">
+          <img src="/example.gif" alt="Example" className="demo-gif" />
+        </div>
       </div>
 
       <Terminal />
