@@ -6,8 +6,8 @@ export const mockCustomers = {
     name: 'Sarah Chen',
     email: 'sarah@example.com',
     preferences: {
-      favorite_fruits: ['Strawberry', 'Blueberry', 'Spinach'],
-      favorite_products: ['Organic Berries', 'Fresh Greens'],
+      favorite_fruits: ['Spinach'],
+      favorite_products: ['Fresh Greens'],
       average_spend: 45.50,
       merchants_used: ['Whole Foods', 'Trader Joe\'s'],
       total_transactions: 24,
@@ -49,62 +49,7 @@ export const mockCustomers = {
 
 export const mockRecommendations = {
   'abc': [
-    {
-      id: 1,
-      inventory_id: 101,
-      priority_score: 95,
-      sent_at: new Date().toISOString(),
-      viewed: false,
-      purchased: false,
-      item: {
-        id: 101,
-        fruit_type: 'Strawberry',
-        variety: 'Organic',
-        quantity: 15,
-        original_price: 6.99,
-        current_price: 4.99,
-        discount_percentage: 28,
-        freshness: {
-          freshness_score: 85,
-          status: 'fresh',
-          predicted_expiry_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
-        }
-      },
-      reason: {
-        match_type: 'favorite_fruit',
-        fruit: 'Strawberry',
-        reasoning: 'Fresh organic strawberries just arrived! We know you love berries.',
-        discount: 28
-      }
-    },
-    {
-      id: 2,
-      inventory_id: 102,
-      priority_score: 88,
-      sent_at: new Date().toISOString(),
-      viewed: false,
-      purchased: false,
-      item: {
-        id: 102,
-        fruit_type: 'Blueberry',
-        variety: 'Wild',
-        quantity: 20,
-        original_price: 8.99,
-        current_price: 6.49,
-        discount_percentage: 28,
-        freshness: {
-          freshness_score: 78,
-          status: 'fresh',
-          predicted_expiry_date: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString()
-        }
-      },
-      reason: {
-        match_type: 'favorite_fruit',
-        fruit: 'Blueberry',
-        reasoning: 'Wild blueberries on sale - perfect for your morning smoothies!',
-        discount: 28
-      }
-    }
+    // No hardcoded recommendations - will be fetched from backend
   ],
   'def': [
     {

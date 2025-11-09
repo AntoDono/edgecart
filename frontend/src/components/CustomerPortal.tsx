@@ -858,10 +858,9 @@ const CustomerPortalContent = () => {
                                 <div className="profile-id">@abc</div>
                               </div>
                             </div>
-                            <div className="profile-bio">health-conscious mom who loves organic berries</div>
+                            <div className="profile-bio">health-conscious mom who loves fresh produce</div>
                             <div className="profile-likes">
-                              <GiStrawberry className="like-icon" />
-                              <span>strawberries, blueberries, spinach</span>
+                              <span>fresh greens & organic produce</span>
                             </div>
                           </button>
 
