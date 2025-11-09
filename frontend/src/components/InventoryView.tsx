@@ -77,6 +77,48 @@ const InventoryView = () => {
   const [loadingImages, setLoadingImages] = useState(false);
   const [expandedImage, setExpandedImage] = useState<DetectionImage | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  
+  // Impact statistics state
+  const [foodWasteSaved, setFoodWasteSaved] = useState<number | null>(null);
+  const [co2Saved, setCo2Saved] = useState<number | null>(null);
+  const [additionalRevenue, setAdditionalRevenue] = useState<number | null>(null);
+  const [statsLoading, setStatsLoading] = useState<boolean>(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  // Fetch impact statistics
+  useEffect(() => {
+    const fetchImpactStats = async () => {
+      setStatsLoading(true);
+      setStatsError(null);
+      try {
+        const response = await fetch(`${config.apiUrl}/api/analytics/v1/metrics/aggregate`);
+        if (response.ok) {
+          const data = await response.json();
+          setFoodWasteSaved(data.waste_saved_kg || data.units_saved || 0);
+          setCo2Saved(data.co2e_saved || data.co2_saved_kg || 0);
+          setAdditionalRevenue(data.revenue_generated || data.additional_revenue_generated || 0);
+        } else {
+          // Silently fail - don't set error, just don't show the section
+          setFoodWasteSaved(null);
+          setCo2Saved(null);
+          setAdditionalRevenue(null);
+        }
+      } catch (err) {
+        // Silently fail - don't show error, just don't display the section
+        console.error('Error fetching impact metrics:', err);
+        setFoodWasteSaved(null);
+        setCo2Saved(null);
+        setAdditionalRevenue(null);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    fetchImpactStats();
+    // Refresh stats every 30 seconds
+    const interval = setInterval(fetchImpactStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     // Load initial inventory
@@ -336,8 +378,8 @@ const InventoryView = () => {
         </div>
       )}
 
-      <div className="inventory-content">
-        <div className="inventory-list-section">
+      <div className="inventory-content" style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+        <div className="inventory-list-section" style={{ flex: 2 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <h2 className="section-title">INVENTORY ITEMS</h2>
             <button className="control-btn" onClick={() => setShowCreateModal(true)}>
@@ -414,7 +456,62 @@ const InventoryView = () => {
           </div>
         </div>
 
-        <div className="changes-log-section">
+        {/* Impact Statistics Panel - Only show if successfully loaded */}
+        {!statsLoading && !statsError && (foodWasteSaved !== null || co2Saved !== null || additionalRevenue !== null) && (
+          <div className="stats-panel" style={{ 
+            flex: 1, 
+            display: 'flex', 
+            flexDirection: 'column', 
+            gap: '15px',
+            minWidth: '250px'
+          }}>
+            <h2 className="section-title" style={{ marginBottom: '10px' }}>IMPACT STATISTICS</h2>
+            <div className="stat-box" style={{ 
+              background: '#1a1a1a', 
+              padding: '15px', 
+              borderRadius: '4px', 
+              border: '1px solid #7ECA9C',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '5px'
+            }}>
+              <h4 style={{ color: '#fff', margin: 0, fontSize: '0.9em', fontWeight: 'normal' }}>FOOD WASTE SAVED</h4>
+              <p style={{ color: '#7ECA9C', fontSize: '1.5em', margin: 0, fontWeight: 'bold' }}>
+                {foodWasteSaved !== null ? `${foodWasteSaved.toFixed(2)} kg` : 'N/A'}
+              </p>
+            </div>
+            <div className="stat-box" style={{ 
+              background: '#1a1a1a', 
+              padding: '15px', 
+              borderRadius: '4px', 
+              border: '1px solid #7ECA9C',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '5px'
+            }}>
+              <h4 style={{ color: '#fff', margin: 0, fontSize: '0.9em', fontWeight: 'normal' }}>CO₂ SAVED</h4>
+              <p style={{ color: '#7ECA9C', fontSize: '1.5em', margin: 0, fontWeight: 'bold' }}>
+                {co2Saved !== null ? `${co2Saved.toFixed(2)} kg` : 'N/A'}
+              </p>
+            </div>
+            <div className="stat-box" style={{ 
+              background: '#1a1a1a', 
+              padding: '15px', 
+              borderRadius: '4px', 
+              border: '1px solid #7ECA9C',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '5px'
+            }}>
+              <h4 style={{ color: '#fff', margin: 0, fontSize: '0.9em', fontWeight: 'normal' }}>ADDITIONAL REVENUE</h4>
+              <p style={{ color: '#7ECA9C', fontSize: '1.5em', margin: 0, fontWeight: 'bold' }}>
+                {additionalRevenue !== null ? `$${additionalRevenue.toFixed(2)}` : 'N/A'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="changes-log-section" style={{ flex: 1 }}>
           <h2 className="section-title">QUANTITY CHANGES LOG</h2>
           <div className="changes-log-container">
             {quantityChanges.length === 0 ? (
