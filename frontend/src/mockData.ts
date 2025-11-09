@@ -49,9 +49,6 @@ export const mockCustomers = {
 
 export const mockRecommendations = {
   'abc': [
-<<<<<<< HEAD
-    // No hardcoded recommendations - will be fetched from backend
-=======
     {
       id: 1,
       inventory_id: 101,
@@ -108,7 +105,6 @@ export const mockRecommendations = {
         discount: 33
       }
     }
->>>>>>> 5067a06457a029600a19d2a6f6b1afae288b8f4c
   ],
   'def': [
     {

@@ -46,6 +46,8 @@ The current approach? Random discounts, generic sales, and hoping someone buys i
 
 We're bringing **intelligence to the edge** of the supply chain—right where food meets shelf.
 
+![EdgeCar Admin Video Stream](./media/palantir_look_interface.png)
+
 ### **How It Works**
 
 #### 1. **🎥 Smart Camera Surveillance**
@@ -53,6 +55,8 @@ Cameras point directly at produce shelves, continuously monitoring fruits, veget
 - **YOLO object detection** to identify what's on the shelf
 - **ResNet freshness model** scoring items from 100 (just arrived) to 0 (spoiled)
 - **Gemini blemish detection** for precise quality assessment
+
+![Blemish Detection](./media/blemish.png)
 
 Our AI detects visual changes—browning bananas, soft spots on tomatoes, wilting lettuce—creating a **real-time decay map** of all inventory.
 
@@ -80,6 +84,8 @@ Our recommendation engine powered by **xAI's Grok** analyzes:
 - **Behavioral Triggers** - Seasonal preferences, health choices, new varieties
 - **Urgency Factors** - Limited quantity, time sensitivity, expiration proximity
 
+![Dashboard](./media/dashboard.png)
+
 Example reasoning: *"Perfect for meal prep Sunday - matches weekly buying pattern, 30% discount exceeds usual 20% threshold, last purchased 8 days ago (usual cycle: 10 days)"*
 
 #### 5. **📊 Predictive Analytics for Stores**
@@ -88,11 +94,15 @@ Store dashboard provides actionable insights:
 - *"Your avocado customers also shop at Whole Foods - stock more organic"*
 - *"50 customers notified about strawberries but only 10 bought - discount wasn't deep enough"*
 
+![Prediction Dashboard](./media/analytics.png)
+
 #### 6. **🌱 Zero-Waste Fallback**
 For items that won't sell even with targeted discounts:
 - System auto-schedules food bank donations 12 hours before critical decay
 - Customers who referred the food bank earn "waste warrior" points
 - Community impact tracking shows pounds of food saved
+
+![Carbon](./media/impact.png)
 
 #### 7. **💬 Natural Language Insights (xAI Grok)**
 Everything is queryable:
