@@ -130,6 +130,14 @@ from api.inventory import register_inventory_routes
 register_basic_routes(app)
 register_inventory_routes(app)
 
+# Register analytics blueprint
+try:
+    from api.analytics import analytics_bp
+    app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
+    print("✅ Analytics API registered")
+except ImportError as e:
+    print(f"⚠️  Analytics API not available: {e}")
+
 
 # ============ Camera-Specific Helper Functions ============
 

@@ -2,7 +2,7 @@
 Database configuration and initialization
 """
 
-from models import db, Store, FruitInventory, FreshnessStatus, Customer, PurchaseHistory, Recommendation, WasteLog
+from models import db, Store, FruitInventory, FreshnessStatus, Customer, PurchaseHistory, Recommendation, WasteLog, PriceCurve, UserDiscountStat, ProductLCA
 from datetime import datetime, timedelta
 import random
 
