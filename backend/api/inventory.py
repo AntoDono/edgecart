@@ -8,7 +8,7 @@ import json
 import cv2
 from pathlib import Path
 from blemish_detection.blemish import detect_blemishes
-from utils.image_storage import DETECTION_IMAGES_DIR, get_category_images, mark_image_as_processed
+from utils.image_storage import DETECTION_IMAGES_DIR, get_category_images, mark_image_as_processed, save_processed_image
 
 
 def register_inventory_routes(app):
@@ -233,41 +233,26 @@ def register_inventory_routes(app):
                         progress_before = int((idx / total_items) * 100)
                         yield f"data: {json.dumps({'type': 'progress', 'progress': progress_before, 'current': idx + 1, 'total': total_items, 'item': item.fruit_type, 'message': f'Processing {item.fruit_type}...'})}\n\n"
                         
-                        # Get detection images for this fruit type
+                        # Get detection images for this fruit type (only processed images on disk)
                         images = get_category_images(fruit_type)
-                        detection_images = [img for img in images if not img['filename'].startswith('thumbnail.')]
+                        detection_images = [img for img in images if img['filename'].startswith('processed_')]
                         
                         if not detection_images:
                             # Send progress update after completion (even if no images)
                             progress_after = int(((idx + 1) / total_items) * 100)
                             yield f"data: {json.dumps({'type': 'progress', 'progress': progress_after, 'current': idx + 1, 'total': total_items, 'item': item.fruit_type, 'message': f'Completed {item.fruit_type}'})}\n\n"
-                            yield f"data: {json.dumps({'type': 'item_complete', 'item': item.fruit_type, 'message': f'No images found for {item.fruit_type}'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'item_complete', 'item': item.fruit_type, 'message': f'No processed images found for {item.fruit_type}'})}\n\n"
                             continue
                         
-                        # Process each image
+                        # Process each processed image
                         scores = []
                         for img_info in detection_images:
                             image_path = DETECTION_IMAGES_DIR / fruit_type / img_info['filename']
                             
-                            # Check if file still exists (might have been deleted by replace_category_images)
+                            # Check if file exists
                             if not image_path.exists():
-                                print(f"⚠️ Image {image_path} was deleted, skipping...")
+                                print(f"⚠️ Image {image_path} not found, skipping...")
                                 continue
-                            
-                            # Mark image as processed FIRST to prevent deletion during processing
-                            # This protects the image from being deleted by replace_category_images/delete_category_images
-                            new_path = mark_image_as_processed(image_path)
-                            if new_path:
-                                # Update image_path reference - new_path is relative like "detection_images/category/filename"
-                                image_path = Path(new_path)
-                                # Verify the renamed file exists
-                                if not image_path.exists():
-                                    print(f"⚠️ Image {image_path} was deleted after marking as processed, skipping...")
-                                    continue
-                            else:
-                                # If marking failed, file might have been deleted, skip it
-                                if not image_path.exists():
-                                    continue
                             
                             # Run blemish detection if not already done
                             blemishes_data = None

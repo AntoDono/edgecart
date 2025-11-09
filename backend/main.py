@@ -38,7 +38,7 @@ from detect_fruits import (
     get_freshness_score,
     get_best_camera_index
 )
-from utils.image_storage import save_detection_image, get_category_images, get_all_categories, DETECTION_IMAGES_DIR, replace_category_images, delete_category_images, save_thumbnail, mark_image_as_processed   
+from utils.image_storage import save_detection_image, get_category_images, get_all_categories, DETECTION_IMAGES_DIR, replace_category_images, delete_category_images, save_thumbnail, mark_image_as_processed, save_processed_image, keep_latest_images   
 from blemish_detection.blemish import detect_blemishes
 import threading
 
@@ -319,8 +319,8 @@ def get_detection_images(category):
     """Get all detection images for a category and run blemish detection"""
     try:
         images = get_category_images(category.lower())
-        # Filter out thumbnail files - they shouldn't be processed for blemish detection
-        detection_images = [img for img in images if not img['filename'].startswith('thumbnail.')]
+        # Only get processed images (images stay in memory until processed)
+        detection_images = [img for img in images if img['filename'].startswith('processed_')]
         
         # Run blemish detection on each image
         images_with_blemishes = []
@@ -348,12 +348,8 @@ def get_detection_images(category):
                     with open(metadata_path, 'w') as f:
                         json.dump(image_info['metadata'], f, indent=2, default=str)
                     
-                    # Mark image as processed so it doesn't get deleted
-                    new_path = mark_image_as_processed(image_path)
-                    if new_path:
-                        # Update image_info with new path and filename
-                        image_info['path'] = new_path
-                        image_info['filename'] = Path(new_path).name
+                    # Image is already processed (starts with processed_), cleanup old images
+                    keep_latest_images(DETECTION_IMAGES_DIR / category.lower(), max_images=100)
                         
                 except Exception as e:
                     print(f"Error running blemish detection on {image_path}: {e}")
@@ -382,8 +378,8 @@ def get_detection_images_stream(category):
     def generate():
         try:
             images = get_category_images(category.lower())
-            # Filter out thumbnail files - they shouldn't be processed for blemish detection
-            detection_images = [img for img in images if not img['filename'].startswith('thumbnail.')]
+            # Only get processed images (images stay in memory until processed)
+            detection_images = [img for img in images if img['filename'].startswith('processed_')]
             total_images = len(detection_images)
             
             if total_images == 0:
@@ -419,13 +415,8 @@ def get_detection_images_stream(category):
                         with open(metadata_path, 'w') as f:
                             json.dump(image_info['metadata'], f, indent=2, default=str)
                         
-                        # Mark image as processed so it doesn't get deleted
-                        new_path = mark_image_as_processed(image_path)
-                        if new_path:
-                            # Update image_info with new path and filename
-                            image_info['path'] = new_path
-                            image_info['filename'] = Path(new_path).name
-                            image_path = DETECTION_IMAGES_DIR / category.lower() / image_info['filename']
+                        # Image is already processed (starts with processed_), cleanup old images
+                        keep_latest_images(DETECTION_IMAGES_DIR / category.lower(), max_images=100)
                         
                     except Exception as e:
                         print(f"Error running blemish detection on {image_path}: {e}")
@@ -1161,20 +1152,8 @@ def _prepare_inventory_updates(current_class_counts, previous_class_counts, fres
         
         # Handle count changes
         if current_count != previous_count:
-            # Handle image storage
-            if current_count > 0:
-                fruit_images = []
-                for det in processed_detections:
-                    if det.get('class') == fruit_type and 'cropped_image' in det:
-                        fruit_images.append((det['cropped_image'], det.get('metadata', {})))
-                
-                if fruit_images:
-                    threading.Thread(
-                        target=replace_category_images,
-                        args=(fruit_images, fruit_type),
-                        daemon=True
-                    ).start()
-            else:
+            # Only delete images when count goes to 0 (images are now kept in memory until processed)
+            if current_count == 0:
                 threading.Thread(
                     target=delete_category_images,
                     args=(fruit_type,),

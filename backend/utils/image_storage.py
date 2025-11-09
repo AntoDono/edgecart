@@ -31,6 +31,43 @@ def ensure_category_directory(category: str) -> Path:
     return category_dir
 
 
+def save_processed_image(cropped_image: np.ndarray, category: str, metadata: Optional[dict] = None) -> Optional[str]:
+    """
+    Save a processed image (with blemish detection) to disk.
+    Processed images are preserved when replace_category_images or delete_category_images are called.
+    
+    Args:
+        cropped_image: Image array to save
+        category: Fruit category name (e.g., 'banana', 'apple')
+        metadata: Optional metadata dict (will include blemish data)
+    
+    Returns:
+        Relative path to saved image, or None if error
+    """
+    try:
+        category_dir = ensure_category_directory(category)
+        
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"processed_{timestamp}.jpg"
+        image_path = category_dir / filename
+        
+        # Save image
+        cv2.imwrite(str(image_path), cropped_image)
+        
+        # Save metadata if provided
+        if metadata:
+            metadata_path = image_path.with_suffix('.json')
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2, default=str)
+        
+        relative_path = f"detection_images/{category.lower()}/{filename}"
+        return relative_path
+    
+    except Exception as e:
+        print(f"Error saving processed image for {category}: {e}")
+        return None
+
+
 def replace_category_images(cropped_images: List[tuple], category: str) -> List[str]:
     """
     Replace all images in a category folder with new images.
@@ -85,18 +122,19 @@ def save_detection_image(cropped_image: np.ndarray, category: str, metadata: Opt
     return None
 
 
-def keep_latest_images(category_dir: Path, max_images: int = 3):
+def keep_latest_images(category_dir: Path, max_images: int = 100):
     """
-    Keep only the latest N images in a category directory.
-    Deletes older images and their metadata files.
+    Keep only the latest N processed images in a category directory.
+    Deletes older processed images and their metadata files.
+    Preserves thumbnails.
     
     Args:
         category_dir: Directory containing images
-        max_images: Maximum number of images to keep
+        max_images: Maximum number of processed images to keep (default: 100)
     """
     try:
-        # Get all image files
-        image_files = list(category_dir.glob("*.jpg"))
+        # Get all processed image files (not thumbnails)
+        image_files = [f for f in category_dir.glob("processed_*.jpg") if not f.name.startswith('thumbnail.')]
         
         if len(image_files) <= max_images:
             return
@@ -244,6 +282,9 @@ def save_thumbnail(cropped_image: np.ndarray, category: str) -> Optional[str]:
         
         # Save thumbnail
         cv2.imwrite(str(thumbnail_path), cropped_image)
+        
+        # Clean up old processed images to keep max 100 per category
+        keep_latest_images(category_dir, max_images=100)
         
         relative_path = f"detection_images/{category.lower()}/{thumbnail_filename}"
         return relative_path
